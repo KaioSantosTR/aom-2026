@@ -3,7 +3,15 @@ window.startApp = function (D) {
   var STATUS = ["A fazer", "Em andamento", "Feito", "Decidir"];
   var NEXT = { "A fazer": "Em andamento", "Em andamento": "Feito", "Feito": "A fazer", "Decidir": "Feito" };
   var CLS = { "A fazer": "fazer", "Em andamento": "and", "Feito": "feito", "Decidir": "dec" };
-  var LS = window.localStorage;
+  var LS = (function () {
+    var mem = {};
+    try {
+      var s = window.localStorage; s.setItem("aom-t", "1"); s.removeItem("aom-t");
+      return s;
+    } catch (e) {
+      return { getItem: function (k) { return mem[k] === undefined ? null : mem[k]; }, setItem: function (k, v) { mem[k] = String(v); }, removeItem: function (k) { delete mem[k]; } };
+    }
+  })();
   var ICON = {
     inicio: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
     tarefas: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/></svg>',
@@ -524,7 +532,18 @@ window.startApp = function (D) {
   function render() {
     var y = window.scrollY;
     renderNav(); renderQuem(); renderBanner(); renderRodape();
-    var v = $("view"); v.textContent = ""; v.appendChild(TELAS[state.view]());
+    var v = $("view"); v.textContent = "";
+    try { v.appendChild(TELAS[state.view]()); }
+    catch (e) {
+      v.appendChild(h("div", { "class": "card" }, [
+        h("h2", { text: "Algo deu errado nesta tela" }),
+        h("p", { "class": "muted", text: String(e && e.message || e) }),
+        h("button", { type: "button", "class": "btn", text: "Limpar dados deste aparelho e recarregar", onclick: function () {
+          try { LS.removeItem("aom-local"); LS.removeItem("aom-me"); } catch (x) {}
+          location.reload();
+        } })
+      ]));
+    }
     $("fab").hidden = state.view !== "tarefas";
     window.scrollTo(0, y);
   }
@@ -538,7 +557,8 @@ window.startApp = function (D) {
   }
 
   $("fab").onclick = abrirNova;
-  carregarBase();
+  try { carregarBase(); }
+  catch (e) { try { LS.removeItem("aom-local"); } catch (x) {} carregarBase(); }
   contagem(); setInterval(contagem, 60000);
   render();
   if (state.modo === "sync") {

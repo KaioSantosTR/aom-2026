@@ -20,18 +20,26 @@
     });
   }
 
+  function mostrarErro(err) {
+    msg.textContent = "Não consegui abrir o painel. Recarregue a página. Detalhe: " + (err && err.message ? err.message : err);
+  }
+
   var blobPromise = Promise.resolve(window.AOM_ENC);
 
   function tryCode(code, silent) {
     msg.textContent = silent ? "" : "Verificando...";
     return blobPromise.then(function (blob) { return decrypt(blob, code); }).then(function (data) {
-      sessionStorage.setItem("aom-code", code);
+      try { sessionStorage.setItem("aom-code", code); } catch (e) {}
+      if (!started) {
+        started = true;
+        try { window.startApp(data); }
+        catch (err) { mostrarErro(err); return true; }
+      }
       overlay.hidden = true;
       document.body.classList.remove("locked");
-      if (!started) { started = true; window.startApp(data); }
       return true;
-    }).catch(function () {
-      sessionStorage.removeItem("aom-code");
+    }, function () {
+      try { sessionStorage.removeItem("aom-code"); } catch (e) {}
       if (!silent) msg.textContent = "Código incorreto. Tente novamente.";
       return false;
     });
@@ -42,7 +50,8 @@
     tryCode(input.value.trim(), false);
   });
 
-  var saved = sessionStorage.getItem("aom-code");
+  var saved = null;
+  try { saved = sessionStorage.getItem("aom-code"); } catch (e) {}
   if (saved) tryCode(saved, true).then(function (ok) { if (!ok) input.focus(); });
   else input.focus();
 })();
