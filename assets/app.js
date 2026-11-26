@@ -81,6 +81,8 @@ window.startApp = function (D) {
   }
 
   function carregarBase() {
+    state.avisos = [];
+    if (state.modo === "local") { try { state.avisos = JSON.parse(LS.getItem("aom-avisos") || "[]"); } catch (e) {} }
     var over = {}, novas = [];
     var apagadas = [];
     try { var st = JSON.parse(LS.getItem("aom-local") || "{}"); over = st.over || {}; novas = st.novas || []; apagadas = st.apagadas || []; } catch (e) {}
@@ -142,6 +144,7 @@ window.startApp = function (D) {
       if (r && r.erro === "pin") { state.pin = ""; LS.removeItem("aom-pin"); sincronizando = false; return sincronizar(); }
       if (!r || !r.ok) throw new Error("falha");
       state.tasks = deLinhas(r.linhas);
+      if (r.avisos) state.avisos = r.avisos.map(function (x) { x.custom = true; return x; });
       state.ultimaSync = new Date(); state.erroSync = false;
       if (!sheetAberto()) render();
     }).catch(function () { state.erroSync = true; renderBanner(); })
@@ -649,7 +652,11 @@ window.startApp = function (D) {
 
   function telaAvisos() {
     var w = h("div", { "class": "stack avisos" });
-    (D.avisos || []).forEach(function (a) {
+    if (nomeAdmin()) w.appendChild(h("button", { type: "button", "class": "btn novo-aviso", text: "Novo aviso", onclick: function () {
+      if (admin()) abrirAviso(null); else abrirPin(function () { abrirAviso(null); });
+    } }));
+    var lista = (D.avisos || []).concat(state.avisos || []);
+    lista.forEach(function (a) {
       var cv = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": a.titulo + ". Imagem pronta para o WhatsApp." });
       var msg = h("p", { "class": "meta", role: "status" });
       var pronto = window.AomAviso.desenhar(cv, a).catch(function () { msg.textContent = "Não consegui montar a imagem. Recarregue a página."; });
@@ -679,15 +686,96 @@ window.startApp = function (D) {
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { toast("Texto copiado"); }, function () { toast("Não consegui copiar.", true); });
         else toast("Seu navegador não permite copiar daqui.", true);
       } });
-      w.appendChild(cartao(a.titulo, "Imagem 1080 x 1080 pronta para o WhatsApp.", [cv, h("div", { "class": "acoes" }, [enviar, baixa, copia]), msg]));
+      var botoes = [enviar, baixa, copia];
+      if (a.custom && nomeAdmin()) botoes.push(h("button", { type: "button", "class": "btn ghost", text: "Editar", onclick: function () {
+        if (admin()) abrirAviso(a); else abrirPin(function () { abrirAviso(a); });
+      } }));
+      w.appendChild(cartao(a.titulo.replace(/\n/g, " "), a.custom ? (a.por ? "Editado por " + a.por + (a.em ? ", " + a.em : "") : "Imagem pronta para o WhatsApp.") : "Guia fixo. Imagem 1080 x 1080 pronta para o WhatsApp.", [cv, h("div", { "class": "acoes" }, botoes), msg]));
     });
-    if (!(D.avisos || []).length) w.appendChild(h("p", { "class": "empty pad", text: "Nenhum aviso por enquanto." }));
+    if (!lista.length) w.appendChild(h("p", { "class": "empty pad", text: "Nenhum aviso por enquanto." }));
     else {
       var ul = h("ul", { "class": "bul" });
       ["No celular: toque em Compartilhar imagem e escolha o WhatsApp.", "No computador: baixe a imagem e arraste para a conversa.", "Copiar texto leva a mesma mensagem, para colar junto com a imagem."].forEach(function (x) { ul.appendChild(h("li", { text: x })); });
       w.appendChild(cartao("Como enviar", null, [ul]));
     }
     return w;
+  }
+
+  function abrirAviso(a) {
+    var novo = !a;
+    var corpo = h("div", { "class": "form" });
+    function campo(rot, id, valor, ph, area) {
+      corpo.appendChild(h("label", { "class": "lbl", "for": id, text: rot }));
+      var el = area ? h("textarea", { id: id, rows: "7", maxlength: "1800", placeholder: ph || "" }) : h("input", { id: id, type: "text", maxlength: "120", placeholder: ph || "" });
+      el.value = valor || ""; corpo.appendChild(el);
+      return el;
+    }
+    var et = campo("Etiqueta (canto da imagem)", "a-et", novo ? "Aviso à equipe" : a.etiqueta, "Ex.: Aviso aos participantes");
+    var ti = campo("Título", "a-ti", novo ? "" : a.titulo, "Ex.: Mudança de horário");
+    var su = campo("Subtítulo (opcional)", "a-su", novo ? "AOM 2026 · 2 e 3 de dezembro · Campinas/SP" : a.sub, "");
+    var tx = campo("Mensagem", "a-tx", novo ? "" : a.texto, "Uma ideia por linha. Comece a linha com - para virar tópico. Linha em branco separa os blocos.", true);
+    var dr = campo("Destaque: título (opcional)", "a-dr", novo ? "" : a.dr, "Ex.: Importante:");
+    var dt = campo("Destaque: texto (opcional)", "a-dt", novo ? "" : a.dt, "Aparece na caixa laranja no fim da imagem");
+    corpo.appendChild(h("label", { "class": "lbl", text: "Prévia da imagem" }));
+    var cv = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": "Prévia do aviso" });
+    corpo.appendChild(cv);
+    function atual() { return { id: novo ? "" : a.id, etiqueta: et.value.trim(), titulo: ti.value.trim(), sub: su.value.trim(), texto: tx.value, dr: dr.value.trim(), dt: dt.value.trim() }; }
+    var tmr;
+    function previa() { clearTimeout(tmr); tmr = setTimeout(function () { var v = atual(); if (!v.titulo) v.titulo = "Título do aviso"; window.AomAviso.desenhar(cv, v).catch(function () {}); }, 250); }
+    [et, ti, su, tx, dr, dt].forEach(function (el) { el.addEventListener("input", previa); });
+    previa();
+    var botoes = [
+      h("button", { type: "button", "class": "btn ghost", text: "Cancelar", onclick: fecharSheet }),
+      h("button", { type: "button", "class": "btn", text: "Salvar aviso", onclick: function () {
+        var v = atual();
+        if (!v.titulo) { ti.focus(); toast("O aviso precisa de um título.", true); return; }
+        exigirNome(function () { fecharSheet(); salvarAviso(v); });
+      } })
+    ];
+    corpo.appendChild(h("div", { "class": "btns" }, botoes));
+    if (!novo) {
+      var zona = h("div", { "class": "apagar" });
+      var desenharApagar = function (conf) {
+        zona.textContent = "";
+        if (!conf) zona.appendChild(h("button", { type: "button", "class": "link danger", text: "Apagar este aviso", onclick: function () { desenharApagar(true); } }));
+        else {
+          zona.appendChild(h("p", { "class": "meta", text: "Apagar este aviso para todos? Isso não dá para desfazer." }));
+          zona.appendChild(h("div", { "class": "btns" }, [
+            h("button", { type: "button", "class": "btn ghost", text: "Não apagar", onclick: function () { desenharApagar(false); } }),
+            h("button", { type: "button", "class": "btn danger", text: "Sim, apagar", onclick: function () { fecharSheet(); apagarAviso(a); } })
+          ]));
+        }
+      };
+      desenharApagar(false);
+      corpo.appendChild(zona);
+    }
+    abrirSheet(novo ? "Novo aviso" : "Editar aviso", "Prévia no padrão AOM, pronta para o WhatsApp.", corpo);
+  }
+  function salvarAviso(v) {
+    var quem = eu() ? eu().rotulo : "";
+    if (state.modo === "local") {
+      v.custom = true; v.por = quem; v.em = agoraTxt();
+      if (!v.id) { v.id = "V-" + Date.now().toString(36); state.avisos.push(v); }
+      else state.avisos = state.avisos.map(function (x) { return x.id === v.id ? v : x; });
+      LS.setItem("aom-avisos", JSON.stringify(state.avisos));
+      render(); toast("Aviso salvo neste aparelho"); return;
+    }
+    api("POST", { por: quem, aviso: v }).then(function (r) {
+      if (!r || !r.ok) throw new Error("falha");
+      toast("Aviso salvo"); return sincronizar();
+    }).catch(function () { toast("Não consegui salvar o aviso. Confira se o script da planilha foi atualizado.", true); });
+  }
+  function apagarAviso(a) {
+    if (state.modo === "local") {
+      state.avisos = state.avisos.filter(function (x) { return x.id !== a.id; });
+      LS.setItem("aom-avisos", JSON.stringify(state.avisos));
+      render(); toast("Aviso apagado neste aparelho"); return;
+    }
+    api("POST", { por: eu() ? eu().rotulo : "", avisoApagar: a.id }).then(function (r) {
+      if (!r || !r.ok) throw new Error("falha");
+      state.avisos = state.avisos.filter(function (x) { return x.id !== a.id; });
+      render(); toast("Aviso apagado");
+    }).catch(function () { toast("Não consegui apagar o aviso.", true); });
   }
 
   var TELAS = { inicio: telaInicio, tarefas: telaTarefas, equipe: telaEquipe, avisos: telaAvisos, cron: telaCron };

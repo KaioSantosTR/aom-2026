@@ -54,7 +54,7 @@ window.AomAviso = (function () {
     ctx.restore();
   }
 
-  function desenhar(canvas, a) {
+  function desenharGuia(canvas, a) {
     canvas.width = S; canvas.height = S;
     return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png")]).then(function (im) {
       var ctx = canvas.getContext("2d");
@@ -124,7 +124,111 @@ window.AomAviso = (function () {
     });
   }
 
+  function fundo(ctx, H) {
+    ctx.fillStyle = "#04172b"; ctx.fillRect(0, 0, S, H);
+    var g = ctx.createRadialGradient(920, 120, 0, 920, 120, 760);
+    g.addColorStop(0, "rgba(240,178,60,0.14)"); g.addColorStop(1, "rgba(240,178,60,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, S, H);
+  }
+
+  function desenharPadrao(canvas, a) {
+    return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png")]).then(function (im) {
+      var m = document.createElement("canvas").getContext("2d");
+      var FS = 34, LH = 48, PAD = 36, X = 78, W = 924;
+      m.font = "800 62px " + FONTE;
+      var tit = [];
+      String(a.titulo || "").split("\n").forEach(function (par) { quebrar(m, par, 920).forEach(function (l) { tit.push(l); }); });
+      var y = 244 + tit.length * 72;
+      var topo = a.sub ? y + 22 : y - 30;
+
+      m.font = "500 " + FS + "px " + FONTE;
+      var ops = [];
+      String(a.texto || "").split("\n").forEach(function (raw) {
+        var l = raw.replace(/\s+$/, "");
+        if (!l.trim()) { if (ops.length && ops[ops.length - 1].t !== "gap") ops.push({ t: "gap" }); return; }
+        var b = /^\s*[-\u2022]\s+(.*)$/.exec(l);
+        if (b) ops.push({ t: "b", linhas: quebrar(m, b[1], W - 2 * PAD - 38) });
+        else ops.push({ t: "p", linhas: quebrar(m, l.trim(), W - 2 * PAD) });
+      });
+      while (ops.length && ops[ops.length - 1].t === "gap") ops.pop();
+      var corpoH = 0;
+      ops.forEach(function (o) { corpoH += o.t === "gap" ? 20 : o.linhas.length * LH + 8; });
+      var cardH = ops.length ? corpoH + 2 * PAD : 0;
+      var fim = ops.length ? topo + cardH : topo;
+
+      var dl = [], rh = 0, ry = 0;
+      if (a.dt) {
+        m.font = "600 27px " + FONTE;
+        dl = quebrar(m, a.dt, 868);
+        rh = 28 + (a.dr ? 40 : 0) + dl.length * 34 + 22;
+        ry = fim + (ops.length ? 26 : 0);
+        fim = ry + rh;
+      }
+      var H = Math.max(S, fim + 130);
+
+      canvas.width = S; canvas.height = H;
+      var ctx = canvas.getContext("2d");
+      fundo(ctx, H);
+      ctx.globalAlpha = 0.14; ctx.drawImage(im[2], 560, -250, 760, 760); ctx.globalAlpha = 1;
+      ctx.fillStyle = "#e0471a"; ctx.fillRect(0, 0, 22, H);
+      ctx.fillStyle = "#f0b23c"; ctx.fillRect(0, H - 70, 22, 70);
+
+      var lh = 92, lw = im[0].width * lh / im[0].height;
+      ctx.drawImage(im[0], 78, 54, lw, lh);
+      ctx.textBaseline = "alphabetic";
+      ctx.textAlign = "right"; ctx.fillStyle = "#f0b23c"; ctx.font = "700 24px " + FONTE;
+      ctx.fillText(String(a.etiqueta || "").toUpperCase(), 1000, 108);
+      ctx.textAlign = "left";
+
+      ctx.fillStyle = "#ffffff"; ctx.font = "800 62px " + FONTE;
+      var ty = 244;
+      tit.forEach(function (l) { ctx.fillText(l, X, ty); ty += 72; });
+      if (a.sub) { ctx.fillStyle = "#f0b23c"; ctx.font = "600 27px " + FONTE; ctx.fillText(a.sub, X, ty - 20); }
+
+      if (ops.length) {
+        retangulo(ctx, X, topo, W, cardH, 22); ctx.fillStyle = "#0a2440"; ctx.fill();
+        ctx.strokeStyle = "#1b3b5f"; ctx.lineWidth = 2; ctx.stroke();
+        var cy = topo + PAD;
+        ctx.font = "500 " + FS + "px " + FONTE;
+        ops.forEach(function (o) {
+          if (o.t === "gap") { cy += 20; return; }
+          o.linhas.forEach(function (l, i) {
+            var base = cy + LH - 14;
+            if (o.t === "b") {
+              if (i === 0) { ctx.fillStyle = "#f0b23c"; ctx.beginPath(); ctx.arc(X + PAD + 8, base - 11, 7, 0, 6.3); ctx.fill(); }
+              ctx.fillStyle = "#ffffff"; ctx.fillText(l, X + PAD + 38, base);
+            } else { ctx.fillStyle = "#ffffff"; ctx.fillText(l, X + PAD, base); }
+            cy += LH;
+          });
+          cy += 8;
+        });
+      }
+
+      if (a.dt) {
+        retangulo(ctx, X, ry, W, rh, 18); ctx.fillStyle = "rgba(224,71,26,0.18)"; ctx.fill();
+        ctx.fillStyle = "#e0471a"; ctx.fillRect(X, ry + 14, 8, rh - 28);
+        var dy = ry + 22;
+        if (a.dr) { ctx.fillStyle = "#f0b23c"; ctx.font = "800 27px " + FONTE; dy += 22; ctx.fillText(a.dr, 110, dy); dy += 18; }
+        ctx.fillStyle = "#ffffff"; ctx.font = "600 27px " + FONTE;
+        dl.forEach(function (l) { dy += 34; ctx.fillText(l, 110, dy - (a.dr ? 0 : 6)); });
+      }
+
+      ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE; ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
+      var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36);
+      return canvas;
+    });
+  }
+
+  function desenhar(canvas, a) { return a.grupos ? desenharGuia(canvas, a) : desenharPadrao(canvas, a); }
+
   function texto(a) {
+    if (!a.grupos) {
+      var u = "*" + String(a.titulo).replace(/\n/g, " ") + "*";
+      if (a.sub) u += "\n" + a.sub;
+      if (a.texto) u += "\n\n" + String(a.texto).replace(/^\s*\u2022\s+/gm, "- ").trim();
+      if (a.dt) u += "\n\n" + (a.dr ? "*" + a.dr + "* " : "") + a.dt;
+      return u;
+    }
     var t = "*" + String(a.titulo).replace(/\n/g, " ") + "*\n" + a.sub + "\n";
     a.grupos.forEach(function (gr) {
       t += "\n*" + gr.nome.toUpperCase() + "* (" + gr.legenda.toLowerCase() + ")\n";

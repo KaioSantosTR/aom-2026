@@ -199,7 +199,7 @@ textarea{resize:vertical}
 .lg.s-and::before{border-color:var(--run);background:conic-gradient(var(--run) 0 50%,transparent 50% 100%)}
 .lg.s-feito::before{border-color:var(--ok);background:var(--ok)}
 .lg.s-dec::before{border-color:var(--dec)}
-.aviso-cv{display:block;width:100%;height:auto;aspect-ratio:1/1;border-radius:12px;border:1px solid var(--line);background:var(--bg2);margin:10px 0}
+.aviso-cv{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--line);background:var(--bg2);margin:10px 0}
 .acoes{display:flex;flex-direction:column;gap:8px}
 .full{grid-column:1/-1}
 
@@ -240,3 +240,5 @@ textarea{resize:vertical}
 .link.danger{color:#ff8a6a}
 .btn.danger{background:#b3261e;border-color:#b3261e;color:#fff}
 .apagar{margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)}
+
+.novo-aviso{width:100%}
