@@ -2,8 +2,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#031428">
 <title>AOM 2026 | Painel da equipe</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -19,108 +20,30 @@
     <img class="logo-tr" src="assets/img/tr-logo.png" alt="Thomson Reuters">
   </form>
 </div>
-<header class="top">
-  <img class="mandala" src="assets/img/mandala.png" alt="" aria-hidden="true">
-  <div class="top-inner">
-    <div class="brand">
+
+<div id="app">
+  <header class="top">
+    <img class="mandala" src="assets/img/mandala.png" alt="" aria-hidden="true">
+    <div class="top-row">
       <h1 class="sr">AOM 2026</h1>
-      <img class="logo-aom" src="assets/img/aom-logo.png" alt="AOM 2026 - Annual Operations Meeting">
-      <span class="brand-sub">Painel da equipe &middot; 2 e 3 de dezembro</span>
-    </div>
-    <div class="top-right">
-      <div class="countdown" id="countdown" aria-live="polite"></div>
-      <img class="logo-tr" src="assets/img/tr-logo.png" alt="Thomson Reuters">
-    </div>
-  </div>
-  <nav class="tabs" id="tabs">
-    <a href="#visao">Visão geral</a>
-    <a href="#cronograma">Cronograma</a>
-    <a href="#equipe">Equipe</a>
-    <a href="#plano">Plano de ação</a>
-    <a href="#regras">Regras e links</a>
-  </nav>
-</header>
-
-<main>
-  <section id="visao">
-    <h2>Visão geral</h2>
-    <div class="kpis" id="kpis"></div>
-
-    <div class="grid2">
-      <div class="card">
-        <h3>Decisões em aberto</h3>
-        <p class="muted">Pontos da reunião que ainda precisam de uma definição.</p>
-        <ul class="list" id="decisoes"></ul>
-      </div>
-      <div class="card">
-        <h3>Alta prioridade sem responsável</h3>
-        <p class="muted">Sem dono, não acontece. Clique para ver no plano.</p>
-        <ul class="list" id="semdono"></ul>
+      <img class="logo-aom" src="assets/img/aom-logo.png" alt="AOM 2026">
+      <div class="top-right">
+        <div class="countdown" id="countdown" aria-live="polite"></div>
+        <button id="who" class="who" type="button" aria-label="Quem é você?"></button>
       </div>
     </div>
+    <nav class="nav" id="nav" aria-label="Seções"></nav>
+  </header>
 
-    <div class="card">
-      <h3>Andamento por área</h3>
-      <div id="areas"></div>
-      <div class="legend" id="legend"></div>
-    </div>
-  </section>
+  <div id="banner" class="banner" hidden></div>
+  <main id="view"></main>
 
-  <section id="cronograma">
-    <h2>Cronograma</h2>
-    <div class="days" id="dias"></div>
-    <h3 class="sub-h">Roteiro hora a hora</h3>
-    <p class="muted" id="roteiro-nota"></p>
-    <div id="roteiro"></div>
-  </section>
+  <button id="fab" class="fab" type="button" aria-label="Nova tarefa" hidden>+</button>
+  <footer><span id="rodape"></span></footer>
+</div>
 
-  <section id="equipe">
-    <h2>Equipe e responsabilidades</h2>
-    <p class="muted">Responsabilidades citadas na reunião e na planilha do evento. As tarefas marcadas como <span class="tag sug">sugerido</span> foram associadas pelo papel de cada pessoa e precisam ser confirmadas.</p>
-    <div class="people" id="pessoas"></div>
-  </section>
-
-  <section id="plano">
-    <h2>Plano de ação</h2>
-    <p class="muted"><strong>AOM-</strong>: modelo de plano de ação da planilha (sem responsáveis), <span class="st st-V">A verificar</span> até alguém conferir o andamento real. <strong>CRO-</strong>: tarefas reais da aba Cronograma, com responsável e status. <strong>REU-</strong>: reunião de alinhamento.</p>
-    <div class="filters">
-      <input type="search" id="f-busca" placeholder="Buscar tarefa ou descrição">
-      <select id="f-area"></select>
-      <select id="f-resp"></select>
-      <select id="f-prio"></select>
-      <select id="f-status"></select>
-      <select id="f-origem"></select>
-    </div>
-    <p class="count" id="contagem"></p>
-    <div class="table-wrap">
-      <table id="tabela">
-        <thead>
-          <tr><th>ID</th><th>Tarefa</th><th>Área</th><th>Responsável</th><th>Prioridade</th><th>Status</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section id="regras">
-    <h2>Regras e links</h2>
-    <div class="grid2">
-      <div class="card">
-        <h3>Regras da equipe</h3>
-        <ul class="list plain" id="regras-lista"></ul>
-      </div>
-      <div class="card">
-        <h3>Zello (comunicação)</h3>
-        <p class="muted">Instale antes do evento e traga seu fone de ouvido.</p>
-        <ul class="list plain" id="links-lista"></ul>
-      </div>
-    </div>
-  </section>
-</main>
-
-<footer>
-  <span id="atualizado"></span>
-</footer>
+<div id="sheet" class="sheet" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
 
 <script src="data/aom.enc.js"></script>
 <script src="assets/app.js"></script>

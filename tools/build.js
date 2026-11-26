@@ -13,7 +13,13 @@ if (!code || code.length < 6) {
 const ctx = { window: {} };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(root, "src", "data.js"), "utf8"), ctx);
-const plain = Buffer.from(JSON.stringify(ctx.window.AOM), "utf8");
+const dados = ctx.window.AOM;
+const urlFile = path.join(root, "src", "sync-url.txt");
+const keyFile = path.join(root, "src", "sync-key.txt");
+if (fs.existsSync(urlFile) && fs.existsSync(keyFile)) {
+  dados.sync = { url: fs.readFileSync(urlFile, "utf8").trim(), key: fs.readFileSync(keyFile, "utf8").trim() };
+}
+const plain = Buffer.from(JSON.stringify(dados), "utf8");
 
 const iterations = Number(process.env.AOM_ITER) || 310000;
 const salt = crypto.randomBytes(16);

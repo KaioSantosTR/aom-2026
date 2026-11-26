@@ -1,287 +1,551 @@
 window.startApp = function (D) {
-  var STATUS = { C: "Concluído", E: "Em andamento", N: "Não iniciado", V: "A verificar", D: "Decisão pendente" };
-  var PRIO = { A: "Alta", M: "Média", B: "Baixa" };
-  var ORDER = ["C", "E", "N", "V", "D"];
-  var COLOR = { C: "var(--c-C)", E: "var(--c-E)", N: "var(--c-N)", V: "var(--c-V)", D: "var(--c-D)" };
+  "use strict";
+  var STATUS = ["A fazer", "Em andamento", "Feito", "Decidir"];
+  var NEXT = { "A fazer": "Em andamento", "Em andamento": "Feito", "Feito": "A fazer", "Decidir": "Feito" };
+  var CLS = { "A fazer": "fazer", "Em andamento": "and", "Feito": "feito", "Decidir": "dec" };
+  var LS = window.localStorage;
+  var ICON = {
+    inicio: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
+    tarefas: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/></svg>',
+    equipe: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M17 14.2c2.3.3 4 2.1 4 4.8"/></svg>',
+    cron: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>'
+  };
 
-  function el(tag, attrs, html) {
+  var state = {
+    view: "inicio", filtro: "pend", abertos: {},
+    me: LS.getItem("aom-me") || "",
+    tasks: [], momentos: D.momentos.slice(),
+    modo: D.sync && D.sync.url ? "sync" : "local",
+    ultimaSync: null, erroSync: false
+  };
+
+  var byNome = {}, byRotulo = {};
+  D.equipe.forEach(function (p) { byNome[p.nome] = p; byRotulo[p.rotulo] = p; });
+
+  function $(id) { return document.getElementById(id); }
+  function h(tag, attrs, kids) {
     var n = document.createElement(tag);
-    if (attrs) for (var k in attrs) n.setAttribute(k, attrs[k]);
-    if (html != null) n.textContent = html;
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      var v = attrs[k];
+      if (v === null || v === undefined || v === false) return;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k.indexOf("on") === 0) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
+    });
+    (kids || []).forEach(function (c) {
+      if (c === null || c === undefined || c === false) return;
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    });
     return n;
   }
-  function $(id) { return document.getElementById(id); }
+  function icon(name) { var s = h("span", { "class": "ic" }); s.innerHTML = ICON[name]; return s; }
 
-  var tasks = D.tarefas.map(function (t) {
-    var conf = D.responsaveis.confirmado[t[0]];
-    var sug = D.responsaveis.sugerido[t[0]];
-    return {
-      id: t[0], area: t[1], titulo: t[2], desc: t[3], prio: t[4], status: t[5], obs: t[6],
-      resp: conf || sug || [], sugerido: !conf && !!sug,
-      origem: t[0].indexOf("REU") === 0 ? "reuniao" : t[0].indexOf("CRO") === 0 ? "cronograma" : "plano"
-    };
-  });
-  var byId = {};
-  tasks.forEach(function (t) { byId[t.id] = t; });
+  function toLabels(arr) { return arr.map(function (n) { return n === "Todos" ? "Todos" : (byNome[n] ? byNome[n].rotulo : n); }).join("; "); }
+  function fromLabels(s) {
+    return String(s || "").split(/[;,]/).map(function (x) { return x.trim(); }).filter(Boolean)
+      .map(function (l) { return l === "Todos" ? "Todos" : (byRotulo[l] ? byRotulo[l].nome : l); });
+  }
+  function eu() { return state.me && state.me !== "_" && byNome[state.me] ? byNome[state.me] : null; }
+  function agoraTxt() {
+    return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date());
+  }
 
-  function countdown() {
-    var alvo = new Date(D.evento.inicio).getTime();
-    var diff = alvo - Date.now();
-    var c = $("countdown");
-    if (diff <= 0) {
-      var fim = new Date("2026-12-04T00:00:00-03:00").getTime();
-      c.innerHTML = Date.now() < fim ? "<strong>Evento em andamento</strong>" : "<strong>Evento encerrado</strong>";
-      return;
+  function momentoPorRotulo(txt) {
+    var t = String(txt || "").trim().toLowerCase();
+    for (var i = 0; i < state.momentos.length; i++) {
+      var m = state.momentos[i];
+      if (m.rotulo.toLowerCase() === t || m.id === t) return m.id;
     }
-    var d = Math.floor(diff / 864e5), h = Math.floor(diff % 864e5 / 36e5);
-    c.innerHTML = "<strong>" + d + (d === 1 ? " dia" : " dias") + " e " + h + "h</strong>para a abertura (02/12, 8h30)";
+    if (!t) return "antes";
+    var novo = { id: "x" + state.momentos.length, rotulo: String(txt).trim(), curto: String(txt).trim() };
+    state.momentos.splice(state.momentos.length - 1, 0, novo);
+    return novo.id;
+  }
+  function rotuloMomento(id) {
+    for (var i = 0; i < state.momentos.length; i++) if (state.momentos[i].id === id) return state.momentos[i].rotulo;
+    return id;
   }
 
-  function kpis() {
-    var total = tasks.length;
-    var done = tasks.filter(function (t) { return t.status === "C"; }).length;
-    var semResp = tasks.filter(function (t) { return !t.resp.length && t.status !== "C"; }).length;
-    var altaSem = tasks.filter(function (t) { return !t.resp.length && t.prio === "A" && t.status !== "C"; }).length;
-    var andamento = tasks.filter(function (t) { return t.status === "E"; }).length;
-    var verificar = tasks.filter(function (t) { return t.status === "V"; }).length;
-    var dec = tasks.filter(function (t) { return t.status === "D"; }).length;
-    var items = [
-      [total, "tarefas no total", ""],
-      [done, "concluídas", ""],
-      [andamento, "em andamento", ""],
-      [verificar, "a verificar (planilha)", verificar ? "warn" : ""],
-      [dec, "decisões pendentes", dec ? "warn" : ""],
-      [semResp, "sem responsável", semResp ? "warn" : ""],
-      [altaSem, "alta prioridade sem responsável", altaSem ? "warn" : ""]
-    ];
-    items.forEach(function (i) {
-      var k = el("div", { "class": "kpi " + i[2] });
-      k.appendChild(el("b", null, String(i[0])));
-      k.appendChild(el("span", null, i[1]));
-      $("kpis").appendChild(k);
+  function carregarBase() {
+    var over = {}, novas = [];
+    try { var st = JSON.parse(LS.getItem("aom-local") || "{}"); over = st.over || {}; novas = st.novas || []; } catch (e) {}
+    state.tasks = D.tarefas.map(function (t) {
+      var o = over[t.id] || {};
+      return { id: t.id, quando: t.quando, titulo: t.titulo, desc: t.desc, status: o.status || t.status,
+        resp: o.resp || t.resp.slice(), sug: t.sug.slice(), obs: o.obs || "", por: o.por || "", em: o.em || "" };
+    }).concat(novas);
+  }
+  function salvarLocal(t) {
+    var st = {};
+    try { st = JSON.parse(LS.getItem("aom-local") || "{}"); } catch (e) {}
+    st.over = st.over || {}; st.novas = st.novas || [];
+    var idx = -1;
+    st.novas.forEach(function (n, i) { if (n.id === t.id) idx = i; });
+    if (idx >= 0) st.novas[idx] = t;
+    else st.over[t.id] = { status: t.status, resp: t.resp, obs: t.obs, por: t.por, em: t.em };
+    LS.setItem("aom-local", JSON.stringify(st));
+  }
+
+  function api(metodo, corpo) {
+    var url = D.sync.url;
+    if (metodo === "GET") return fetch(url + (url.indexOf("?") >= 0 ? "&" : "?") + "k=" + encodeURIComponent(D.sync.key)).then(function (r) { return r.json(); });
+    corpo.k = D.sync.key;
+    return fetch(url, { method: "POST", body: JSON.stringify(corpo) }).then(function (r) { return r.json(); });
+  }
+  function status_(s) { return STATUS.indexOf(s) >= 0 ? s : "A fazer"; }
+  function deLinhas(linhas) {
+    return linhas.filter(function (r) { return r.titulo; }).map(function (r) {
+      return { id: r.id, quando: momentoPorRotulo(r.quando), titulo: r.titulo, desc: r.desc || "", status: status_(r.status),
+        resp: fromLabels(r.resp), sug: fromLabels(r.sug), obs: r.obs || "", por: r.por || "", em: r.em || "" };
     });
   }
-
-  function linkTask(t) {
-    var li = el("li");
-    var a = el("a", { href: "#plano" });
-    a.appendChild(el("span", { "class": "id" }, t.id));
-    a.appendChild(document.createTextNode(t.titulo));
-    a.addEventListener("click", function () { focusTask(t.id); });
-    li.appendChild(a);
-    return li;
+  var sincronizando = false;
+  function sincronizar() {
+    if (state.modo !== "sync" || sincronizando) return Promise.resolve();
+    sincronizando = true;
+    return api("GET").then(function (r) {
+      if (!r || !r.ok) throw new Error("falha");
+      state.tasks = deLinhas(r.linhas);
+      state.ultimaSync = new Date(); state.erroSync = false;
+      if (!sheetAberto()) render();
+    }).catch(function () { state.erroSync = true; renderBanner(); })
+      .then(function () { sincronizando = false; });
   }
 
-  function lists() {
-    var dec = tasks.filter(function (t) { return t.status === "D"; });
-    var ul = $("decisoes");
-    if (!dec.length) ul.appendChild(el("li", { "class": "empty" }, "Nenhuma decisão pendente."));
-    dec.forEach(function (t) { ul.appendChild(linkTask(t)); });
-
-    var sem = tasks.filter(function (t) { return !t.resp.length && t.prio === "A" && t.status !== "C"; });
-    var ul2 = $("semdono");
-    sem.slice(0, 12).forEach(function (t) { ul2.appendChild(linkTask(t)); });
-    if (sem.length > 12) {
-      var li = el("li");
-      var a = el("a", { href: "#plano" }, "Ver todas as " + sem.length + " no plano de ação");
-      a.addEventListener("click", function () { $("f-resp").value = "__none"; $("f-prio").value = "A"; render(); });
-      li.appendChild(a);
-      ul2.appendChild(li);
-    }
-    if (!sem.length) ul2.appendChild(el("li", { "class": "empty" }, "Todas as tarefas de alta prioridade têm responsável."));
+  var toastT;
+  function toast(msg, erro) {
+    var t = $("toast"); t.textContent = msg; t.className = "toast" + (erro ? " erro" : ""); t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 2600);
   }
 
-  function areas() {
-    var box = $("areas");
-    Object.keys(D.areas).forEach(function (k) {
-      var ts = tasks.filter(function (t) { return t.area === k; });
-      var row = el("div", { "class": "arow" });
-      row.appendChild(el("div", null, D.areas[k]));
-      var bar = el("div", { "class": "bar" });
-      ORDER.forEach(function (s) {
-        var n = ts.filter(function (t) { return t.status === s; }).length;
-        if (n) { var i = el("i"); i.style.width = (n / ts.length * 100) + "%"; i.style.background = COLOR[s]; i.title = STATUS[s] + ": " + n; bar.appendChild(i); }
-      });
-      row.appendChild(bar);
-      var done = ts.filter(function (t) { return t.status === "C"; }).length;
-      row.appendChild(el("div", { "class": "anum" }, done + " de " + ts.length));
-      box.appendChild(row);
-    });
-    ORDER.forEach(function (s) {
-      var sp = el("span");
-      var i = el("i"); i.style.background = COLOR[s];
-      sp.appendChild(i); sp.appendChild(document.createTextNode(STATUS[s]));
-      $("legend").appendChild(sp);
-    });
-  }
-
-  function dias() {
-    D.dias.forEach(function (d) {
-      var c = el("div", { "class": "day" + (/02\/12|03\/12/.test(d.data) ? " evt" : "") });
-      c.appendChild(el("small", null, d.data));
-      c.appendChild(el("h3", null, d.titulo));
-      var ul = el("ul");
-      d.itens.forEach(function (i) { ul.appendChild(el("li", null, i)); });
-      c.appendChild(ul);
-      $("dias").appendChild(c);
-    });
-  }
-
-  function pessoas() {
-    D.equipe.forEach(function (p) {
-      var c = el("div", { "class": "person" });
-      c.appendChild(el("h3", null, p.nome));
-      c.appendChild(el("div", { "class": "papel" }, p.papel));
-      var ul = el("ul");
-      p.resp.forEach(function (r) { ul.appendChild(el("li", null, r)); });
-      c.appendChild(ul);
-      var ct = el("div", { "class": "contact" });
-      ct.appendChild(el("div", { "class": "full" }, p.completo));
-      if (p.email) ct.appendChild(el("a", { href: "mailto:" + p.email }, p.email));
-      if (p.tel) {
-        var tl = el("a", { href: "tel:+55" + p.tel.replace(/\D/g, "") }, p.tel);
-        ct.appendChild(tl);
-        if (p.telConferir) ct.appendChild(el("span", { "class": "tag sug" }, "conferir telefone"));
-      }
-      c.appendChild(ct);
-      var mine = tasks.filter(function (t) { return t.resp.indexOf(p.nome) >= 0 || t.resp.indexOf("Todos") >= 0; });
-      var box = el("div", { "class": "tasks" });
-      if (mine.length) {
-        box.appendChild(el("b", null, mine.length + (mine.length === 1 ? " tarefa" : " tarefas")));
-        mine.forEach(function (t) {
-          var a = el("a", { href: "#plano" });
-          a.appendChild(el("span", { "class": "id" }, t.id));
-          a.appendChild(document.createTextNode(t.titulo + " "));
-          if (t.sugerido) a.appendChild(el("span", { "class": "tag sug" }, "sugerido"));
-          a.addEventListener("click", function () { focusTask(t.id); });
-          box.appendChild(a);
-        });
-      } else {
-        box.appendChild(el("span", { "class": "empty" }, "Nenhuma tarefa atribuída ainda."));
-      }
-      c.appendChild(box);
-      $("pessoas").appendChild(c);
-    });
-    var sem = tasks.filter(function (t) { return !t.resp.length && t.status !== "C"; });
-    var c = el("div", { "class": "person nobody" });
-    c.appendChild(el("h3", null, "Sem responsável"));
-    c.appendChild(el("div", { "class": "papel" }, sem.length + " tarefas aguardando um dono"));
-    var a = el("a", { href: "#plano" }, "Ver todas no plano de ação");
-    a.style.color = "var(--accent)";
-    a.addEventListener("click", function () { $("f-resp").value = "__none"; render(); });
-    c.appendChild(a);
-    $("pessoas").appendChild(c);
-  }
-
-  function fillSelect(id, label, opts) {
-    var s = $(id);
-    s.appendChild(new Option(label, ""));
-    opts.forEach(function (o) { s.appendChild(new Option(o[1], o[0])); });
-    s.addEventListener("change", render);
-  }
-
-  function filters() {
-    fillSelect("f-area", "Todas as áreas", Object.keys(D.areas).map(function (k) { return [k, D.areas[k]]; }));
-    var nomes = D.equipe.map(function (p) { return [p.nome, p.nome]; });
-    nomes.push(["__none", "Sem responsável"]);
-    fillSelect("f-resp", "Todos os responsáveis", nomes);
-    fillSelect("f-prio", "Qualquer prioridade", Object.keys(PRIO).map(function (k) { return [k, PRIO[k]]; }));
-    fillSelect("f-status", "Qualquer status", ORDER.map(function (k) { return [k, STATUS[k]]; }));
-    fillSelect("f-origem", "Todas as origens", [["plano", "Plano de ação (AOM)"], ["cronograma", "Cronograma (CRO)"], ["reuniao", "Reunião (REU)"]]);
-    $("f-busca").addEventListener("input", render);
-  }
-
-  function norm(s) { return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
-
-  function render() {
-    var q = norm($("f-busca").value.trim());
-    var fa = $("f-area").value, fr = $("f-resp").value, fp = $("f-prio").value, fs = $("f-status").value, fo = $("f-origem").value;
-    var rows = tasks.filter(function (t) {
-      if (fa && t.area !== fa) return false;
-      if (fp && t.prio !== fp) return false;
-      if (fs && t.status !== fs) return false;
-      if (fo && t.origem !== fo) return false;
-      if (fr === "__none" && t.resp.length) return false;
-      if (fr && fr !== "__none" && t.resp.indexOf(fr) < 0 && t.resp.indexOf("Todos") < 0) return false;
-      if (q && norm(t.id + " " + t.titulo + " " + t.desc + " " + t.obs + " " + t.resp.join(" ")).indexOf(q) < 0) return false;
-      return true;
-    });
-    $("contagem").textContent = rows.length + " de " + tasks.length + " tarefas";
-    var tb = document.querySelector("#tabela tbody");
-    tb.textContent = "";
-    rows.forEach(function (t) {
-      var tr = el("tr"); tr.id = "t-" + t.id;
-      tr.appendChild(el("td", { "class": "c-id" }, t.id));
-      var td = el("td", { "class": "c-title" });
-      td.appendChild(el("div", { "class": "t-title" }, t.titulo));
-      td.appendChild(el("div", { "class": "t-desc" }, t.desc));
-      if (t.obs && t.obs !== "Reunião") td.appendChild(el("div", { "class": "t-obs" }, "Obs.: " + t.obs));
-      tr.appendChild(td);
-      tr.appendChild(el("td", { "data-l": "Área" }, D.areas[t.area]));
-      var r = el("td", { "data-l": "Responsável" });
-      if (t.resp.length) {
-        r.appendChild(document.createTextNode(t.resp.join(", ") + " "));
-        if (t.sugerido) r.appendChild(el("span", { "class": "tag sug" }, "sugerido"));
-      } else r.appendChild(el("span", { "class": "sem" }, "A definir"));
-      tr.appendChild(r);
-      var p = el("td", { "data-l": "Prioridade" }); p.appendChild(el("span", { "class": "pr pr-" + t.prio }, PRIO[t.prio])); tr.appendChild(p);
-      var s = el("td", { "data-l": "Status" }); s.appendChild(el("span", { "class": "st st-" + t.status }, STATUS[t.status])); tr.appendChild(s);
-      tb.appendChild(tr);
-    });
-  }
-
-  function focusTask(id) {
-    ["f-busca", "f-area", "f-resp", "f-prio", "f-status", "f-origem"].forEach(function (f) { $(f).value = ""; });
+  function salvar(t, patch) {
+    var antes = JSON.parse(JSON.stringify(t));
+    Object.keys(patch).forEach(function (k) { t[k] = patch[k]; });
+    var quem = eu() ? eu().rotulo : "";
+    t.por = quem; t.em = agoraTxt();
     render();
-    setTimeout(function () {
-      var tr = $("t-" + id);
-      if (tr) { tr.scrollIntoView({ block: "center" }); tr.classList.add("flash"); setTimeout(function () { tr.classList.remove("flash"); }, 2500); }
-    }, 50);
+    if (state.modo === "local") { salvarLocal(t); toast("Salvo neste aparelho"); return; }
+    var corpo = { id: t.id, por: quem };
+    if (patch.status !== undefined) corpo.status = patch.status;
+    if (patch.resp !== undefined) corpo.resp = toLabels(patch.resp);
+    if (patch.obs !== undefined) corpo.obs = patch.obs;
+    api("POST", corpo).then(function (r) {
+      if (!r || !r.ok) throw new Error("falha");
+      toast("Salvo na planilha");
+    }).catch(function () {
+      Object.keys(antes).forEach(function (k) { t[k] = antes[k]; });
+      render(); toast("Não consegui salvar. Tente de novo.", true);
+    });
   }
 
-  function roteiro() {
-    $("roteiro-nota").textContent = D.roteiro.nota;
-    D.roteiro.fases.forEach(function (f) {
-      var det = el("details", { "class": "fase" });
-      det.appendChild(el("summary", null, f.nome + " (" + f.itens.length + " itens)"));
-      var ul = el("ul", { "class": "hora" });
-      f.itens.forEach(function (i) {
-        var li = el("li");
-        li.appendChild(el("span", { "class": "h" }, i[0]));
-        var b = el("div");
-        b.appendChild(el("b", null, i[1]));
-        if (i[2]) b.appendChild(el("div", { "class": "t-desc" }, i[2]));
-        li.appendChild(b);
-        ul.appendChild(li);
+  function exigirNome(depois) {
+    if (eu()) { depois(); return; }
+    abrirNome(depois);
+  }
+  function ciclo(t) { exigirNome(function () { salvar(t, { status: NEXT[t.status] }); }); }
+
+  /* ---------- sheet (janela inferior) ---------- */
+  function sheetAberto() { return !$("sheet").hidden; }
+  function fecharSheet() { var s = $("sheet"); s.hidden = true; s.textContent = ""; document.body.classList.remove("noscroll"); }
+  function abrirSheet(titulo, sub, corpo) {
+    var s = $("sheet"); s.textContent = "";
+    var box = h("div", { "class": "sheet-box", role: "dialog", "aria-modal": "true", "aria-label": titulo }, [
+      h("div", { "class": "sheet-head" }, [
+        h("div", null, [h("h2", { text: titulo }), sub ? h("p", { "class": "sheet-sub", text: sub }) : null]),
+        h("button", { "class": "x", type: "button", "aria-label": "Fechar", text: "\u00d7", onclick: fecharSheet })
+      ]),
+      corpo
+    ]);
+    s.appendChild(box); s.hidden = false; document.body.classList.add("noscroll");
+    s.onclick = function (e) { if (e.target === s) fecharSheet(); };
+    box.scrollTop = 0;
+  }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && sheetAberto()) fecharSheet(); });
+
+  function abrirNome(depois) {
+    var lista = h("div", { "class": "pick" });
+    D.equipe.forEach(function (p) {
+      lista.appendChild(h("button", { type: "button", "class": "pick-item", onclick: function () {
+        state.me = p.nome; LS.setItem("aom-me", p.nome); fecharSheet(); render();
+        if (depois) depois(); else toast("Olá, " + p.nome + ".");
+      } }, [h("b", { text: p.nome }), h("span", { text: p.papel })]));
+    });
+    lista.appendChild(h("button", { type: "button", "class": "pick-item ghost", onclick: function () {
+      state.me = "_"; LS.setItem("aom-me", "_"); fecharSheet(); render(); toast("Modo só leitura. Escolha seu nome para editar.");
+    } }, [h("b", { text: "Só quero ver" }), h("span", { text: "Sem editar nada" })]));
+    abrirSheet("Quem é você?", "Assim a equipe sabe quem atualizou cada tarefa.", lista);
+  }
+
+  function chipsResp(sel) {
+    var wrap = h("div", { "class": "chips" });
+    function desenhar() {
+      wrap.textContent = "";
+      var nomes = D.equipe.map(function (p) { return p.nome; });
+      sel.forEach(function (n) { if (nomes.indexOf(n) < 0 && n !== "Todos") nomes.push(n); });
+      nomes.push("Todos");
+      nomes.forEach(function (n) {
+        var on = sel.indexOf(n) >= 0;
+        wrap.appendChild(h("button", { type: "button", "class": "chip" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false", text: n, onclick: function () {
+          var i = sel.indexOf(n); if (i >= 0) sel.splice(i, 1); else sel.push(n); desenhar();
+        } }));
       });
-      det.appendChild(ul);
-      $("roteiro").appendChild(det);
-    });
-  }
-
-  function regras() {
-    D.regras.forEach(function (r) { $("regras-lista").appendChild(el("li", null, r)); });
-    D.links.forEach(function (l) {
-      var li = el("li");
-      var a = el("a", { href: l.url, target: "_blank", rel: "noopener" }, l.nome);
-      li.appendChild(a);
-      $("links-lista").appendChild(li);
-    });
-  }
-
-  function nav() {
-    var links = document.querySelectorAll("#tabs a");
-    var secs = Array.prototype.map.call(links, function (a) { return $(a.getAttribute("href").slice(1)); });
-    function on() {
-      var y = window.scrollY + 140, cur = 0;
-      secs.forEach(function (s, i) { if (s.offsetTop <= y) cur = i; });
-      links.forEach(function (a, i) { a.classList.toggle("on", i === cur); });
     }
-    window.addEventListener("scroll", on, { passive: true });
-    on();
+    desenhar();
+    return wrap;
   }
 
-  countdown(); setInterval(countdown, 60000);
-  kpis(); lists(); areas(); dias(); roteiro(); pessoas(); filters(); render(); regras(); nav();
-  $("atualizado").textContent = "Atualizado em " + D.evento.atualizado;
+  function abrirTarefa(t) {
+    var draft = { status: t.status, resp: t.resp.slice() };
+    var corpo = h("div", { "class": "form" });
+    if (t.desc) corpo.appendChild(h("p", { "class": "desc", text: t.desc }));
+
+    corpo.appendChild(h("label", { "class": "lbl", text: "Status" }));
+    var seg = h("div", { "class": "seg" });
+    function desenharSeg() {
+      seg.textContent = "";
+      STATUS.forEach(function (s) {
+        seg.appendChild(h("button", { type: "button", "class": "seg-b s-" + CLS[s] + (draft.status === s ? " on" : ""), "aria-pressed": draft.status === s ? "true" : "false", text: s, onclick: function () { draft.status = s; desenharSeg(); } }));
+      });
+    }
+    desenharSeg(); corpo.appendChild(seg);
+
+    corpo.appendChild(h("label", { "class": "lbl", text: "Responsável" }));
+    var chips = chipsResp(draft.resp);
+    corpo.appendChild(chips);
+    var acoes = h("div", { "class": "mini" });
+    if (eu()) acoes.appendChild(h("button", { type: "button", "class": "link", text: "Assumir esta tarefa", onclick: function () {
+      if (draft.resp.indexOf(eu().nome) < 0) draft.resp.push(eu().nome);
+      var novo = chipsResp(draft.resp); chips.replaceWith(novo); chips = novo;
+    } }));
+    if (!t.resp.length && t.sug.length) acoes.appendChild(h("button", { type: "button", "class": "link", text: "Usar a sugestão: " + t.sug.join(", "), onclick: function () {
+      draft.resp.length = 0; t.sug.forEach(function (n) { draft.resp.push(n); });
+      var novo = chipsResp(draft.resp); chips.replaceWith(novo); chips = novo;
+    } }));
+    corpo.appendChild(acoes);
+
+    corpo.appendChild(h("label", { "class": "lbl", "for": "f-obs", text: "Observação" }));
+    var obs = h("textarea", { id: "f-obs", rows: "2", maxlength: "200", placeholder: "Opcional" }); obs.value = t.obs || "";
+    corpo.appendChild(obs);
+
+    if (t.por) corpo.appendChild(h("p", { "class": "meta", text: "Última alteração: " + t.por + (t.em ? ", " + t.em : "") }));
+    corpo.appendChild(h("div", { "class": "btns" }, [
+      h("button", { type: "button", "class": "btn ghost", text: "Cancelar", onclick: fecharSheet }),
+      h("button", { type: "button", "class": "btn", text: "Salvar", onclick: function () {
+        exigirNome(function () {
+          var patch = {};
+          if (draft.status !== t.status) patch.status = draft.status;
+          if (draft.resp.join("|") !== t.resp.join("|")) patch.resp = draft.resp.slice();
+          if (obs.value.trim() !== (t.obs || "")) patch.obs = obs.value.trim();
+          fecharSheet();
+          if (Object.keys(patch).length) salvar(t, patch);
+        });
+      } })
+    ]));
+    abrirSheet(t.titulo, rotuloMomento(t.quando), corpo);
+  }
+
+  function abrirNova() {
+    var draft = { resp: [] };
+    var corpo = h("div", { "class": "form" });
+    corpo.appendChild(h("label", { "class": "lbl", "for": "n-t", text: "O que precisa ser feito?" }));
+    var tit = h("input", { id: "n-t", type: "text", maxlength: "120", placeholder: "Ex.: Levar extensões para a sala" });
+    corpo.appendChild(tit);
+    corpo.appendChild(h("label", { "class": "lbl", "for": "n-q", text: "Quando" }));
+    var q = h("select", { id: "n-q" });
+    state.momentos.forEach(function (m) { q.appendChild(h("option", { value: m.id, text: m.rotulo })); });
+    q.value = momentoAtual();
+    corpo.appendChild(q);
+    corpo.appendChild(h("label", { "class": "lbl", text: "Responsável" }));
+    corpo.appendChild(chipsResp(draft.resp));
+    corpo.appendChild(h("div", { "class": "btns" }, [
+      h("button", { type: "button", "class": "btn ghost", text: "Cancelar", onclick: fecharSheet }),
+      h("button", { type: "button", "class": "btn", text: "Criar tarefa", onclick: function () {
+        var titulo = tit.value.trim();
+        if (!titulo) { tit.focus(); toast("Escreva o que precisa ser feito.", true); return; }
+        exigirNome(function () {
+          var quem = eu().rotulo, quando = q.value;
+          fecharSheet();
+          if (state.modo === "local") {
+            var t = { id: "N-" + Date.now().toString(36), quando: quando, titulo: titulo, desc: "", status: "A fazer", resp: draft.resp.slice(), sug: [], obs: "", por: quem, em: agoraTxt() };
+            state.tasks.push(t); salvarLocal(t); render(); toast("Tarefa criada neste aparelho");
+          } else {
+            api("POST", { por: quem, novo: { titulo: titulo, desc: "", quando: rotuloMomento(quando), resp: toLabels(draft.resp) } })
+              .then(function (r) { if (!r || !r.ok) throw new Error("falha"); toast("Tarefa criada"); return sincronizar(); })
+              .catch(function () { toast("Não consegui criar a tarefa.", true); });
+          }
+        });
+      } })
+    ]));
+    abrirSheet("Nova tarefa", null, corpo);
+  }
+
+  /* ---------- consultas ---------- */
+  function momentoAtual() {
+    var d = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+    if (d <= "2026-11-29") return "antes";
+    if (d === "2026-11-30") return "seg";
+    if (d === "2026-12-01") return "ter";
+    return "evento";
+  }
+  function feito(t) { return t.status === "Feito"; }
+  function meu(t) { var e = eu(); return !!e && (t.resp.indexOf(e.nome) >= 0 || t.resp.indexOf("Todos") >= 0); }
+  var FILTROS = [
+    ["pend", "Pendentes", function (t) { return !feito(t); }],
+    ["minhas", "Minhas", function (t) { return !feito(t) && meu(t); }],
+    ["sem", "Sem dono", function (t) { return !feito(t) && !t.resp.length; }],
+    ["dec", "Decidir", function (t) { return t.status === "Decidir"; }],
+    ["feitas", "Feitas", feito],
+    ["todas", "Todas", function () { return true; }]
+  ];
+  function filtroFn(id) { for (var i = 0; i < FILTROS.length; i++) if (FILTROS[i][0] === id) return FILTROS[i][2]; return FILTROS[0][2]; }
+  function operacionais() { return state.tasks.filter(function (t) { return t.quando !== "prep"; }); }
+
+  function irPara(view, filtro, abrir) {
+    state.view = view; if (filtro) state.filtro = filtro;
+    if (abrir) state.abertos["m-" + abrir] = true;
+    render(); window.scrollTo(0, 0);
+  }
+
+  /* ---------- componentes ---------- */
+  function linha(t) {
+    var meta = h("span", { "class": "row-meta" });
+    if (t.status === "Decidir") meta.appendChild(h("span", { "class": "tag dec", text: "Decidir" }));
+    if (t.resp.length) meta.appendChild(h("span", { "class": "who-txt", text: t.resp.join(", ") }));
+    else if (t.sug.length) meta.appendChild(h("span", { "class": "who-txt sug", text: "Sem dono. Sugestão: " + t.sug.join(", ") }));
+    else meta.appendChild(h("span", { "class": "who-txt sem", text: "Sem responsável" }));
+    var corpo = h("button", { type: "button", "class": "row-body", onclick: function () { abrirTarefa(t); } }, [
+      h("span", { "class": "row-title", text: t.titulo }), meta,
+      t.obs ? h("span", { "class": "row-obs", text: t.obs }) : null
+    ]);
+    var st = h("button", { type: "button", "class": "st-btn s-" + CLS[t.status], "aria-label": t.status + ". Toque para mudar o status.", onclick: function (e) { e.stopPropagation(); ciclo(t); } });
+    return h("div", { "class": "row" }, [st, corpo]);
+  }
+  function cartao(titulo, sub, kids, extra) {
+    return h("section", { "class": "card" + (extra ? " " + extra : "") }, [h("h2", { text: titulo }), sub ? h("p", { "class": "muted", text: sub }) : null].concat(kids));
+  }
+  function botaoLink(txt, fn) { return h("button", { type: "button", "class": "link big", text: txt, onclick: fn }); }
+  function progresso(feitas, total) {
+    var p = h("div", { "class": "prog", role: "img", "aria-label": feitas + " de " + total + " feitas" }, [h("i")]);
+    p.firstChild.style.width = (total ? Math.round(feitas / total * 100) : 0) + "%";
+    return p;
+  }
+
+  /* ---------- telas ---------- */
+  function telaInicio() {
+    var w = h("div", { "class": "stack" });
+    var ops = operacionais(), pend = ops.filter(function (t) { return !feito(t); });
+    var e = eu();
+    if (!state.me) {
+      w.appendChild(h("section", { "class": "card hello" }, [
+        h("h2", { text: "Quem é você?" }),
+        h("p", { "class": "muted", text: "Escolha seu nome para marcar tarefas e ver as suas." }),
+        h("button", { type: "button", "class": "btn", text: "Escolher meu nome", onclick: function () { abrirNome(); } })
+      ]));
+    } else if (e) {
+      var minhas = pend.filter(meu);
+      w.appendChild(h("section", { "class": "card hello" }, [
+        h("h2", { text: "Olá, " + e.nome + "." }),
+        h("p", { "class": "muted", text: minhas.length ? "Você tem " + minhas.length + (minhas.length === 1 ? " tarefa pendente." : " tarefas pendentes.") : "Nenhuma tarefa pendente com o seu nome." }),
+        minhas.length ? botaoLink("Ver as minhas tarefas", function () { irPara("tarefas", "minhas"); }) : null
+      ]));
+    }
+
+    var mid = momentoAtual();
+    var doMom = ops.filter(function (t) { return t.quando === mid; });
+    var pendMom = doMom.filter(function (t) { return !feito(t); });
+    var feitasMom = doMom.length - pendMom.length;
+    var kids = [progresso(feitasMom, doMom.length), h("p", { "class": "muted", text: feitasMom + " de " + doMom.length + " feitas" })];
+    pendMom.slice(0, 5).forEach(function (t) { kids.push(linha(t)); });
+    if (!pendMom.length) kids.push(h("p", { "class": "empty", text: "Tudo certo por aqui." }));
+    else if (pendMom.length > 5) kids.push(botaoLink("Ver as outras " + (pendMom.length - 5), function () { irPara("tarefas", "pend", mid); }));
+    w.appendChild(cartao("Agora: " + rotuloMomento(mid), null, kids, "focus"));
+
+    var dec = state.tasks.filter(function (t) { return t.status === "Decidir"; });
+    var dk = [];
+    dec.slice(0, 4).forEach(function (t) { dk.push(linha(t)); });
+    if (!dec.length) dk.push(h("p", { "class": "empty", text: "Nenhuma decisão em aberto." }));
+    if (dec.length > 4) dk.push(botaoLink("Ver as " + dec.length + " decisões", function () { irPara("tarefas", "dec"); }));
+    w.appendChild(cartao("Falta decidir (" + dec.length + ")", "Pontos da reunião que ainda precisam de uma resposta.", dk));
+
+    var sem = pend.filter(function (t) { return !t.resp.length; });
+    w.appendChild(cartao("Sem responsável", null, [
+      h("p", { "class": "big-n", text: String(sem.length) }),
+      h("p", { "class": "muted", text: sem.length === 1 ? "tarefa ainda sem dono" : "tarefas ainda sem dono" }),
+      sem.length ? botaoLink("Ver quais são", function () { irPara("tarefas", "sem"); }) : null
+    ]));
+
+    var chips = h("div", { "class": "mom-strip" });
+    state.momentos.forEach(function (m) {
+      if (m.id === "prep") return;
+      var ts = ops.filter(function (t) { return t.quando === m.id; });
+      var f = ts.filter(feito).length;
+      chips.appendChild(h("button", { type: "button", "class": "mom" + (m.id === mid ? " on" : ""), onclick: function () { irPara("tarefas", "pend", m.id); } }, [
+        h("b", { text: m.curto }), h("span", { text: f + "/" + ts.length })
+      ]));
+    });
+    w.appendChild(cartao("Por momento", null, [chips]));
+    return w;
+  }
+
+  function telaTarefas() {
+    var w = h("div", { "class": "stack" });
+    var barra = h("div", { "class": "filters", role: "tablist" });
+    FILTROS.forEach(function (f) {
+      var n = state.tasks.filter(f[2]).length;
+      barra.appendChild(h("button", { type: "button", "class": "fchip" + (state.filtro === f[0] ? " on" : ""), role: "tab", "aria-selected": state.filtro === f[0] ? "true" : "false", onclick: function () { state.filtro = f[0]; render(); } }, [f[1], h("span", { text: String(n) })]));
+    });
+    w.appendChild(barra);
+    var fn = filtroFn(state.filtro), mid = momentoAtual(), algum = false;
+    state.momentos.forEach(function (m) {
+      var todas = state.tasks.filter(function (t) { return t.quando === m.id; });
+      var itens = todas.filter(fn);
+      if (!itens.length) return;
+      algum = true;
+      var chave = "m-" + m.id;
+      var aberto = state.abertos[chave] !== undefined ? state.abertos[chave] : (state.filtro !== "pend" || m.id === mid) && m.id !== "prep";
+      if (m.id === "prep" && state.abertos[chave] === undefined) aberto = false;
+      var f = todas.filter(feito).length;
+      var cab = h("button", { type: "button", "class": "grp-head", "aria-expanded": aberto ? "true" : "false", onclick: function () { state.abertos[chave] = !aberto; render(); } }, [
+        h("span", { "class": "grp-t", text: m.rotulo }),
+        h("span", { "class": "grp-n", text: f + "/" + todas.length }),
+        h("span", { "class": "chev" + (aberto ? " up" : ""), "aria-hidden": "true" })
+      ]);
+      var g = h("section", { "class": "grp" }, [cab]);
+      if (aberto) { var lista = h("div", { "class": "rows" }); itens.forEach(function (t) { lista.appendChild(linha(t)); }); g.appendChild(lista); }
+      w.appendChild(g);
+    });
+    if (!algum) w.appendChild(h("p", { "class": "empty pad", text: state.filtro === "dec" ? "Nenhuma decisão em aberto." : "Nada por aqui. Bom sinal." }));
+    return w;
+  }
+
+  function contato(p) {
+    var d = p.tel ? p.tel.replace(/\D/g, "") : "";
+    var bs = h("div", { "class": "contact" });
+    if (d) {
+      bs.appendChild(h("a", { "class": "cbtn", href: "tel:+55" + d, text: "Ligar" }));
+      bs.appendChild(h("a", { "class": "cbtn", href: "https://wa.me/55" + d, target: "_blank", rel: "noopener", text: "WhatsApp" }));
+    }
+    if (p.email) bs.appendChild(h("a", { "class": "cbtn", href: "mailto:" + p.email, text: "E-mail" }));
+    return bs;
+  }
+
+  function telaEquipe() {
+    var w = h("div", { "class": "stack" });
+    var ul = h("ul", { "class": "bul" }); D.regras.forEach(function (r) { ul.appendChild(h("li", { text: r })); });
+    w.appendChild(cartao("Regras da equipe", null, [ul]));
+    var z = h("div", { "class": "contact" });
+    D.links.forEach(function (l) { z.appendChild(h("a", { "class": "cbtn", href: l.url, target: "_blank", rel: "noopener", text: l.nome })); });
+    w.appendChild(cartao("Zello", "Instale antes do evento e leve o seu fone de ouvido.", [z]));
+
+    var lista = h("div", { "class": "people" });
+    D.equipe.forEach(function (p) {
+      var minhas = state.tasks.filter(function (t) { return !feito(t) && (t.resp.indexOf(p.nome) >= 0 || t.resp.indexOf("Todos") >= 0); });
+      var chave = "p-" + p.nome, aberto = !!state.abertos[chave];
+      var ini = p.rotulo.split(" ").map(function (x) { return x.charAt(0); }).join("");
+      var cab = h("button", { type: "button", "class": "grp-head person-head", "aria-expanded": aberto ? "true" : "false", onclick: function () { state.abertos[chave] = !aberto; render(); } }, [
+        h("span", { "class": "avatar", text: ini }),
+        h("span", { "class": "p-t" }, [h("b", { text: p.nome }), h("small", { text: p.papel })]),
+        minhas.length ? h("span", { "class": "grp-n", text: String(minhas.length) }) : null,
+        h("span", { "class": "chev" + (aberto ? " up" : ""), "aria-hidden": "true" })
+      ]);
+      var card = h("section", { "class": "grp person" }, [cab]);
+      if (aberto) {
+        var b = h("div", { "class": "p-body" });
+        var u = h("ul", { "class": "bul" }); p.resp.forEach(function (r) { u.appendChild(h("li", { text: r })); });
+        b.appendChild(u);
+        b.appendChild(h("p", { "class": "meta", text: p.completo + (p.telConferir ? " (confirmar o telefone)" : "") }));
+        b.appendChild(contato(p));
+        if (minhas.length) { var rows = h("div", { "class": "rows" }); minhas.forEach(function (t) { rows.appendChild(linha(t)); }); b.appendChild(h("h3", { text: "Pendências" })); b.appendChild(rows); }
+        card.appendChild(b);
+      }
+      lista.appendChild(card);
+    });
+    w.appendChild(h("h2", { "class": "sec", text: "Quem é quem" }));
+    w.appendChild(lista);
+    return w;
+  }
+
+  function acordeao(chave, titulo, kids, sub) {
+    var det = h("details", { "class": "acc", open: state.abertos[chave] ? true : null }, [h("summary", null, [h("span", { text: titulo }), sub ? h("small", { text: sub }) : null])].concat(kids));
+    det.addEventListener("toggle", function () { state.abertos[chave] = det.open; });
+    return det;
+  }
+  function telaCron() {
+    var w = h("div", { "class": "stack" });
+    w.appendChild(h("p", { "class": "muted", text: "Tudo recolhido para não pesar. Toque para abrir." }));
+    var dias = D.dias.map(function (d, i) {
+      var ul = h("ul", { "class": "bul" }); d.itens.forEach(function (x) { ul.appendChild(h("li", { text: x })); });
+      return acordeao("d" + i, d.data + " · " + d.titulo, [ul]);
+    });
+    w.appendChild(h("h2", { "class": "sec", text: "Dia a dia" }));
+    dias.forEach(function (x) { w.appendChild(x); });
+    w.appendChild(h("h2", { "class": "sec", text: "Roteiro hora a hora" }));
+    w.appendChild(h("p", { "class": "muted", text: D.roteiro.nota }));
+    D.roteiro.fases.forEach(function (f, i) {
+      var ul = h("ul", { "class": "hora" });
+      f.itens.forEach(function (it) {
+        ul.appendChild(h("li", null, [h("span", { "class": "h", text: it[0] }), h("div", null, [h("b", { text: it[1] }), it[2] ? h("div", { "class": "t-desc", text: it[2] }) : null])]));
+      });
+      w.appendChild(acordeao("r" + i, f.nome, [ul], f.itens.length + " itens"));
+    });
+    return w;
+  }
+
+  var TELAS = { inicio: telaInicio, tarefas: telaTarefas, equipe: telaEquipe, cron: telaCron };
+  var NAV = [["inicio", "Início"], ["tarefas", "Tarefas"], ["equipe", "Equipe"], ["cron", "Cronograma"]];
+
+  function renderNav() {
+    var nav = $("nav"); nav.textContent = "";
+    var pend = operacionais().filter(function (t) { return !feito(t); }).length;
+    NAV.forEach(function (n) {
+      var b = h("button", { type: "button", "class": "nav-b" + (state.view === n[0] ? " on" : ""), "aria-current": state.view === n[0] ? "page" : null, onclick: function () { irPara(n[0]); } },
+        [icon(n[0]), h("span", { text: n[1] }), n[0] === "tarefas" && pend ? h("em", { text: String(pend) }) : null]);
+      nav.appendChild(b);
+    });
+  }
+  function renderQuem() {
+    var b = $("who"); b.textContent = "";
+    var e = eu();
+    if (e) { b.appendChild(h("span", { "class": "avatar sm", text: e.rotulo.split(" ").map(function (x) { return x.charAt(0); }).join("") })); b.appendChild(h("span", { "class": "who-n", text: e.nome })); }
+    else b.appendChild(h("span", { "class": "who-n", text: state.me === "_" ? "Só leitura" : "Quem é você?" }));
+    b.onclick = function () { abrirNome(); };
+  }
+  function renderBanner() {
+    var b = $("banner"), msg = "";
+    if (state.erroSync) msg = "Sem conexão com a planilha. Você está vendo a última versão carregada.";
+    else if (state.modo === "local") msg = "Modo de teste: o que você marcar fica só neste aparelho.";
+    b.hidden = !msg; b.textContent = msg; b.className = "banner" + (state.erroSync ? " erro" : "");
+  }
+  function renderRodape() {
+    var t = state.modo === "sync" ? (state.ultimaSync ? "Atualizado às " + state.ultimaSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "Carregando...") : "Dados de " + D.evento.atualizado;
+    $("rodape").textContent = t;
+  }
+  function render() {
+    var y = window.scrollY;
+    renderNav(); renderQuem(); renderBanner(); renderRodape();
+    var v = $("view"); v.textContent = ""; v.appendChild(TELAS[state.view]());
+    $("fab").hidden = state.view !== "tarefas";
+    window.scrollTo(0, y);
+  }
+
+  function contagem() {
+    var c = $("countdown");
+    var diff = new Date(D.evento.inicio).getTime() - Date.now();
+    if (diff <= 0) { c.innerHTML = ""; c.appendChild(h("strong", { text: Date.now() < new Date("2026-12-04T00:00:00-03:00").getTime() ? "Evento em andamento" : "Evento encerrado" })); return; }
+    var d = Math.floor(diff / 864e5), hh = Math.floor(diff % 864e5 / 36e5);
+    c.textContent = ""; c.appendChild(h("strong", { text: d + "d " + hh + "h" })); c.appendChild(h("span", { text: "para a abertura" }));
+  }
+
+  $("fab").onclick = abrirNova;
+  carregarBase();
+  contagem(); setInterval(contagem, 60000);
+  render();
+  if (state.modo === "sync") {
+    sincronizar();
+    setInterval(sincronizar, 45000);
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) sincronizar(); });
+  }
+  var hash = (location.hash || "").slice(1);
+  if (TELAS[hash]) irPara(hash);
 };
