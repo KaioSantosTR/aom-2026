@@ -242,3 +242,5 @@ textarea{resize:vertical}
 .apagar{margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)}
 
 .novo-aviso{width:100%}
+
+.form input.ro,.form textarea.ro{opacity:.55}

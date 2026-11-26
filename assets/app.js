@@ -29,8 +29,35 @@ window.startApp = function (D) {
   };
 
   var byNome = {}, byRotulo = {};
-  D.equipe.forEach(function (p) { byNome[p.nome] = p; byRotulo[p.rotulo] = p; });
-  if (state.me && state.me !== "_" && !byNome[state.me]) state.me = "";
+  state.cont = {};
+  function equipeAtual() {
+    var ov = state.cont.equipe;
+    if (!ov) return D.equipe;
+    var bn = {}; D.equipe.forEach(function (p) { bn[p.nome] = p; });
+    return ov.map(function (p) {
+      var b = bn[p.nome] || {};
+      return { nome: p.nome, rotulo: p.rotulo, completo: b.completo || p.rotulo, papel: p.papel || "", email: b.email || "", tel: b.tel || "", resp: p.resp || [] };
+    });
+  }
+  function reindexar() {
+    byNome = {}; byRotulo = {};
+    equipeAtual().forEach(function (p) { byNome[p.nome] = p; byRotulo[p.rotulo] = p; });
+  }
+  function C(sec) {
+    if (state.cont[sec] !== undefined) return state.cont[sec];
+    return sec === "avisosFixos" ? (D.avisos || []) : D[sec];
+  }
+  function setCont(obj) {
+    var ok = {};
+    Object.keys(obj || {}).forEach(function (k) {
+      var v = obj[k];
+      if (k === "roteiro") { if (v && Array.isArray(v.fases)) ok[k] = v; }
+      else if (k === "equipe" || k === "dias" || k === "regras" || k === "links" || k === "avisosFixos") { if (Array.isArray(v)) ok[k] = v; }
+    });
+    state.cont = ok; reindexar();
+  }
+  if (state.modo === "local") { try { setCont(JSON.parse(LS.getItem("aom-cont") || "{}")); } catch (e) {} }
+  reindexar();
   state.pin = LS.getItem("aom-pin") || "";
 
   function $(id) { return document.getElementById(id); }
@@ -143,6 +170,7 @@ window.startApp = function (D) {
     return api("GET").then(function (r) {
       if (r && r.erro === "pin") { state.pin = ""; LS.removeItem("aom-pin"); sincronizando = false; return sincronizar(); }
       if (!r || !r.ok) throw new Error("falha");
+      if (r.conteudo) setCont(r.conteudo);
       state.tasks = deLinhas(r.linhas);
       if (r.avisos) state.avisos = r.avisos.map(function (x) { x.custom = true; return x; });
       state.ultimaSync = new Date(); state.erroSync = false;
@@ -216,7 +244,7 @@ window.startApp = function (D) {
 
   function abrirNome(depois) {
     var lista = h("div", { "class": "pick" });
-    D.equipe.forEach(function (p) {
+    equipeAtual().forEach(function (p) {
       lista.appendChild(h("button", { type: "button", "class": "pick-item", onclick: function () {
         state.me = p.nome; LS.setItem("aom-me", p.nome); fecharSheet(); render();
         if (nomeAdmin() && state.modo === "sync" && !state.pin) { abrirPin(depois); return; }
@@ -229,14 +257,14 @@ window.startApp = function (D) {
     abrirSheet("Quem é você?", "Assim a equipe sabe quem atualizou cada tarefa.", lista);
   }
 
-  function abrirPin(depois) {
+  function abrirPin(depois, soAdmin) {
     var corpo = h("form", { "class": "form", autocomplete: "off" });
     corpo.appendChild(h("p", { "class": "muted", text: "Administradores criam e editam tarefas. Os demais só assumem tarefas e atualizam as suas." }));
     var pin = h("input", { type: "password", id: "f-pin", inputmode: "numeric", autocomplete: "off", placeholder: "PIN de administrador", "aria-label": "PIN de administrador" });
     var msg = h("p", { "class": "meta", role: "alert" });
     corpo.appendChild(pin); corpo.appendChild(msg);
     corpo.appendChild(h("div", { "class": "btns" }, [
-      h("button", { type: "button", "class": "btn ghost", text: "Agora não", onclick: function () { fecharSheet(); if (depois) depois(); } }),
+      h("button", { type: "button", "class": "btn ghost", text: "Agora não", onclick: function () { fecharSheet(); if (depois && !soAdmin) depois(); } }),
       h("button", { type: "submit", "class": "btn", text: "Entrar" })
     ]));
     corpo.addEventListener("submit", function (ev) {
@@ -259,7 +287,7 @@ window.startApp = function (D) {
     var wrap = h("div", { "class": "chips" });
     function desenhar() {
       wrap.textContent = "";
-      var nomes = D.equipe.map(function (p) { return p.nome; });
+      var nomes = equipeAtual().map(function (p) { return p.nome; });
       sel.forEach(function (n) { if (nomes.indexOf(n) < 0 && n !== "Todos") nomes.push(n); });
       if (!semTodos) nomes.push("Todos");
       nomes.forEach(function (n) {
@@ -591,13 +619,13 @@ window.startApp = function (D) {
 
   function telaEquipe() {
     var w = h("div", { "class": "stack" });
-    var ul = h("ul", { "class": "bul" }); D.regras.forEach(function (r) { ul.appendChild(h("li", { text: r })); });
+    var ul = h("ul", { "class": "bul" }); C("regras").forEach(function (r) { ul.appendChild(h("li", { text: r })); });
     var z = h("div", { "class": "contact" });
-    D.links.forEach(function (l) { z.appendChild(h("a", { "class": "cbtn", href: l.url, target: "_blank", rel: "noopener", text: l.nome })); });
-    w.appendChild(cartao("Regras da equipe", null, [ul, h("h3", { text: "Zello" }), h("p", { "class": "muted", text: "Instale antes do evento. Uso de fones é essencial." }), z], "full"));
+    C("links").filter(function (l) { return /^https:\/\//i.test(l.url || ""); }).forEach(function (l) { z.appendChild(h("a", { "class": "cbtn", href: l.url, target: "_blank", rel: "noopener", text: l.nome })); });
+    w.appendChild(cartao("Regras da equipe", null, [ul, h("h3", { text: "Zello" }), h("p", { "class": "muted", text: "Instale antes do evento. Uso de fones é essencial." }), z, nomeAdmin() ? botaoLink("Editar regras e links", function () { comAdmin(abrirRegras); }) : null], "full"));
 
     var lista = h("div", { "class": "people" });
-    D.equipe.forEach(function (p) {
+    equipeAtual().forEach(function (p) {
       var minhas = state.tasks.filter(function (t) { return !feito(t) && (t.resp.indexOf(p.nome) >= 0 || t.resp.indexOf("Todos") >= 0); });
       var chave = "p-" + p.nome, aberto = !!state.abertos[chave];
       var ini = p.rotulo.split(" ").map(function (x) { return x.charAt(0); }).join("");
@@ -614,13 +642,16 @@ window.startApp = function (D) {
         b.appendChild(u);
         b.appendChild(h("p", { "class": "meta", text: p.completo }));
         b.appendChild(contato(p));
+        if (nomeAdmin()) b.appendChild(botaoLink("Editar ou remover " + p.nome, function () { comAdmin(function () { abrirPessoa(p); }); }));
         if (minhas.length) { var rows = h("div", { "class": "rows" }); minhas.forEach(function (t) { rows.appendChild(linha(t)); }); b.appendChild(h("h3", { text: "Pendências" })); b.appendChild(rows); }
         card.appendChild(b);
       }
       lista.appendChild(card);
     });
     w.appendChild(h("h2", { "class": "sec", text: "Quem é quem" }));
+    if (nomeAdmin()) w.appendChild(h("button", { type: "button", "class": "btn novo-aviso", text: "Adicionar pessoa", onclick: function () { comAdmin(function () { abrirPessoa(null); }); } }));
     w.appendChild(lista);
+    if (admin()) { var rs = botaoRestaurar(["equipe", "regras", "links"], "equipe, regras e links"); if (rs) w.appendChild(rs); }
     return w;
   }
 
@@ -632,30 +663,33 @@ window.startApp = function (D) {
   function telaCron() {
     var w = h("div", { "class": "stack" });
     w.appendChild(h("p", { "class": "muted", text: "Tudo recolhido para não pesar. Toque para abrir." }));
-    var dias = D.dias.map(function (d, i) {
-      var ul = h("ul", { "class": "bul" }); d.itens.forEach(function (x) { ul.appendChild(h("li", { text: x })); });
-      return acordeao("d" + i, d.data + " · " + d.titulo, [ul]);
+    var dias = C("dias").map(function (d, i) {
+      var ul = h("ul", { "class": "bul" }); (d.itens || []).forEach(function (x) { ul.appendChild(h("li", { text: x })); });
+      return acordeao("d" + i, d.data + " · " + d.titulo, [ul, nomeAdmin() ? botaoLink("Editar ou remover este dia", function () { comAdmin(function () { abrirDia(i); }); }) : null]);
     });
     w.appendChild(h("h2", { "class": "sec", text: "Dia a dia" }));
     dias.forEach(function (x) { w.appendChild(x); });
+    if (nomeAdmin()) w.appendChild(botaoLink("Adicionar dia", function () { comAdmin(function () { abrirDia(null); }); }));
     w.appendChild(h("h2", { "class": "sec", text: "Roteiro hora a hora" }));
-    w.appendChild(h("p", { "class": "muted", text: D.roteiro.nota }));
-    D.roteiro.fases.forEach(function (f, i) {
+    var rot = C("roteiro");
+    w.appendChild(h("p", { "class": "muted", text: rot.nota || "" }));
+    if (nomeAdmin()) w.appendChild(botaoLink("Editar o texto acima", function () { comAdmin(abrirNotaRoteiro); }));
+    rot.fases.forEach(function (f, i) {
       var ul = h("ul", { "class": "hora" });
-      f.itens.forEach(function (it) {
+      (f.itens || []).forEach(function (it) {
         ul.appendChild(h("li", null, [h("span", { "class": "h", text: it[0] }), h("div", null, [h("b", { text: it[1] }), it[2] ? h("div", { "class": "t-desc", text: it[2] }) : null])]));
       });
-      w.appendChild(acordeao("r" + i, f.nome, [ul], f.itens.length + " itens"));
+      w.appendChild(acordeao("r" + i, f.nome, [ul, nomeAdmin() ? botaoLink("Editar ou remover esta fase", function () { comAdmin(function () { abrirFase(i); }); }) : null], (f.itens || []).length + " itens"));
     });
+    if (nomeAdmin()) w.appendChild(botaoLink("Adicionar fase ao roteiro", function () { comAdmin(function () { abrirFase(null); }); }));
+    if (admin()) { var rs = botaoRestaurar(["dias", "roteiro"], "cronograma"); if (rs) w.appendChild(rs); }
     return w;
   }
 
   function telaAvisos() {
     var w = h("div", { "class": "stack avisos" });
-    if (nomeAdmin()) w.appendChild(h("button", { type: "button", "class": "btn novo-aviso", text: "Novo aviso", onclick: function () {
-      if (admin()) abrirAviso(null); else abrirPin(function () { abrirAviso(null); });
-    } }));
-    var lista = (D.avisos || []).concat(state.avisos || []);
+    if (nomeAdmin()) w.appendChild(h("button", { type: "button", "class": "btn novo-aviso", text: "Novo aviso", onclick: function () { comAdmin(function () { abrirAviso(null); }); } }));
+    var lista = C("avisosFixos").concat(state.avisos || []);
     lista.forEach(function (a) {
       var cv = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": a.titulo + ". Imagem pronta para o WhatsApp." });
       var msg = h("p", { "class": "meta", role: "status" });
@@ -687,10 +721,10 @@ window.startApp = function (D) {
         else toast("Seu navegador não permite copiar daqui.", true);
       } });
       var botoes = [enviar, baixa, copia];
-      if (a.custom && nomeAdmin()) botoes.push(h("button", { type: "button", "class": "btn ghost", text: "Editar", onclick: function () {
-        if (admin()) abrirAviso(a); else abrirPin(function () { abrirAviso(a); });
+      if (nomeAdmin()) botoes.push(h("button", { type: "button", "class": "btn ghost", text: "Editar", onclick: function () {
+        comAdmin(function () { if (a.grupos) abrirGuia(a); else abrirAviso(a); });
       } }));
-      w.appendChild(cartao(a.titulo.replace(/\n/g, " "), a.custom ? (a.por ? "Editado por " + a.por + (a.em ? ", " + a.em : "") : "Imagem pronta para o WhatsApp.") : "Guia fixo. Imagem 1080 x 1080 pronta para o WhatsApp.", [cv, h("div", { "class": "acoes" }, botoes), msg]));
+      w.appendChild(cartao(a.titulo.replace(/\n/g, " "), a.custom ? (a.por ? "Editado por " + a.por + (a.em ? ", " + a.em : "") : "Imagem pronta para o WhatsApp.") : "Imagem 1080 x 1080 pronta para o WhatsApp.", [cv, h("div", { "class": "acoes" }, botoes), msg]));
     });
     if (!lista.length) w.appendChild(h("p", { "class": "empty pad", text: "Nenhum aviso por enquanto." }));
     else {
@@ -698,6 +732,7 @@ window.startApp = function (D) {
       ["No celular: toque em Compartilhar imagem e escolha o WhatsApp.", "No computador: baixe a imagem e arraste para a conversa.", "Copiar texto leva a mesma mensagem, para colar junto com a imagem."].forEach(function (x) { ul.appendChild(h("li", { text: x })); });
       w.appendChild(cartao("Como enviar", null, [ul]));
     }
+    if (admin()) { var rs = botaoRestaurar(["avisosFixos"], "guia de camisas"); if (rs) w.appendChild(rs); }
     return w;
   }
 
@@ -776,6 +811,213 @@ window.startApp = function (D) {
       state.avisos = state.avisos.filter(function (x) { return x.id !== a.id; });
       render(); toast("Aviso apagado");
     }).catch(function () { toast("Não consegui apagar o aviso.", true); });
+  }
+
+  /* ---------- edição de conteúdo ---------- */
+  function comAdmin(fn) { if (admin()) fn(); else abrirPin(fn, true); }
+  function listaLinhas(s) { return String(s || "").split("\n").map(function (x) { return x.trim(); }).filter(Boolean); }
+  function partes(l) { return String(l).split("|").map(function (x) { return x.trim(); }); }
+
+  function salvarCont(secao, valor, msg) {
+    var antes = state.cont[secao];
+    if (valor === null) delete state.cont[secao]; else state.cont[secao] = valor;
+    reindexar(); render();
+    if (state.modo === "local") { LS.setItem("aom-cont", JSON.stringify(state.cont)); toast(msg || "Salvo neste aparelho"); return Promise.resolve(); }
+    return api("POST", { por: eu() ? eu().rotulo : "", conteudo: { secao: secao, valor: valor } }).then(function (r) {
+      if (!r || !r.ok) throw new Error(r && r.erro || "falha");
+      toast(msg || "Salvo");
+    }).catch(function () {
+      if (antes === undefined) delete state.cont[secao]; else state.cont[secao] = antes;
+      reindexar(); render();
+      toast("Não consegui salvar. Confira se o script da planilha foi atualizado.", true);
+    });
+  }
+
+  function confirmar(titulo, msg, rot, fn) {
+    var corpo = h("div", { "class": "form" }, [
+      h("p", { "class": "desc", text: msg }),
+      h("div", { "class": "btns" }, [
+        h("button", { type: "button", "class": "btn ghost", text: "Cancelar", onclick: fecharSheet }),
+        h("button", { type: "button", "class": "btn danger", text: rot, onclick: function () { exigirNome(function () { fecharSheet(); fn(); }); } })
+      ])
+    ]);
+    abrirSheet(titulo, null, corpo);
+  }
+  function botaoRestaurar(secoes, rotulo) {
+    if (!secoes.some(function (s) { return state.cont[s] !== undefined; })) return null;
+    return h("div", { "class": "apagar" }, [h("button", { type: "button", "class": "link", text: "Restaurar " + rotulo + " ao padrão original", onclick: function () {
+      confirmar("Restaurar o padrão?", "As alterações feitas pelo painel em " + rotulo + " serão descartadas para todos.", "Sim, restaurar", function () {
+        secoes.reduce(function (p, s) { return p.then(function () { return state.cont[s] !== undefined ? salvarCont(s, null, "Padrão restaurado") : null; }); }, Promise.resolve());
+      });
+    } })]);
+  }
+
+  function abrirEditor(o) {
+    var corpo = h("div", { "class": "form" }), els = {};
+    o.campos.forEach(function (c, i) {
+      var id = "ed-" + i;
+      corpo.appendChild(h("label", { "class": "lbl", "for": id, text: c.rot }));
+      var el = c.ta ? h("textarea", { id: id, rows: String(c.rows || 4), maxlength: String(c.max || 1500), placeholder: c.ph || "" })
+        : h("input", { id: id, type: "text", maxlength: String(c.max || 120), placeholder: c.ph || "" });
+      el.value = c.valor || "";
+      if (c.ro) { el.readOnly = true; el.className = "ro"; }
+      corpo.appendChild(el); els[c.k] = el;
+      if (c.dica) corpo.appendChild(h("p", { "class": "meta", text: c.dica }));
+    });
+    corpo.appendChild(h("div", { "class": "btns" }, [
+      h("button", { type: "button", "class": "btn ghost", text: "Cancelar", onclick: fecharSheet }),
+      h("button", { type: "button", "class": "btn", text: "Salvar", onclick: function () {
+        var v = {}; Object.keys(els).forEach(function (k) { v[k] = els[k].value; });
+        var erro = o.valida ? o.valida(v) : "";
+        if (erro) { toast(erro, true); return; }
+        exigirNome(function () { fecharSheet(); o.aplicar(v); });
+      } })
+    ]));
+    if (o.apagar) {
+      var zona = h("div", { "class": "apagar" });
+      var desenhar = function (conf) {
+        zona.textContent = "";
+        if (!conf) zona.appendChild(h("button", { type: "button", "class": "link danger", text: o.rotApagar || "Apagar", onclick: function () { desenhar(true); } }));
+        else {
+          zona.appendChild(h("p", { "class": "meta", text: o.msgApagar || "Apagar para todos? Isso não dá para desfazer." }));
+          zona.appendChild(h("div", { "class": "btns" }, [
+            h("button", { type: "button", "class": "btn ghost", text: "Não apagar", onclick: function () { desenhar(false); } }),
+            h("button", { type: "button", "class": "btn danger", text: "Sim, apagar", onclick: function () { exigirNome(function () { fecharSheet(); o.apagar(); }); } })
+          ]));
+        }
+      };
+      desenhar(false); corpo.appendChild(zona);
+    }
+    abrirSheet(o.titulo, o.sub || null, corpo);
+  }
+
+  function pessoaMin(p) { return { nome: p.nome, rotulo: p.rotulo, papel: p.papel || "", resp: (p.resp || []).slice() }; }
+  function abrirPessoa(p) {
+    var novo = !p, admins = D.admins || [];
+    abrirEditor({
+      titulo: novo ? "Adicionar pessoa" : p.nome, sub: novo ? "Só o primeiro nome e a inicial do sobrenome, como na planilha." : p.rotulo,
+      campos: [
+        { k: "nome", rot: "Primeiro nome", valor: novo ? "" : p.nome, ro: !novo, max: 24 },
+        { k: "ini", rot: "Inicial do sobrenome", valor: novo ? "" : p.rotulo.replace(/\.$/, "").split(" ").pop(), ro: !novo, max: 1, ph: "Ex.: S" },
+        { k: "papel", rot: "Função no evento", valor: novo ? "" : p.papel, max: 80, ph: "Ex.: Recepção" },
+        { k: "resp", rot: "Responsabilidades", ta: true, rows: 5, valor: novo ? "" : p.resp.join("\n"), dica: "Uma por linha." }
+      ],
+      valida: function (v) {
+        if (!novo) return "";
+        var n = v.nome.trim();
+        if (!/^[A-Za-z\u00c0-\u00ff'-]+$/.test(n)) return "Escreva só o primeiro nome, sem espaços.";
+        if (!/^[A-Za-z\u00c0-\u00ff]$/.test(v.ini.trim())) return "Escreva uma letra para a inicial do sobrenome.";
+        if (byNome[n]) return "Já existe alguém com esse nome na equipe.";
+        return "";
+      },
+      aplicar: function (v) {
+        var lista = equipeAtual().map(pessoaMin);
+        var nova = { nome: novo ? v.nome.trim() : p.nome, rotulo: novo ? v.nome.trim() + " " + v.ini.trim().toUpperCase() + "." : p.rotulo, papel: v.papel.trim(), resp: listaLinhas(v.resp) };
+        if (novo) lista.push(nova); else lista = lista.map(function (x) { return x.nome === p.nome ? nova : x; });
+        salvarCont("equipe", lista, novo ? nova.nome + " entrou na equipe" : "Equipe atualizada");
+      },
+      apagar: !novo && admins.indexOf(p.nome) < 0 ? function () {
+        salvarCont("equipe", equipeAtual().map(pessoaMin).filter(function (x) { return x.nome !== p.nome; }), p.nome + " saiu da equipe");
+      } : null,
+      rotApagar: "Remover " + (p ? p.nome : "") + " da equipe",
+      msgApagar: "Remover da equipe? As tarefas dessa pessoa continuam na lista, mas sem vínculo com um nome."
+    });
+  }
+
+  function abrirRegras() {
+    abrirEditor({
+      titulo: "Regras e links", sub: "Aparecem na aba Equipe.",
+      campos: [
+        { k: "regras", rot: "Regras da equipe", ta: true, rows: 8, valor: C("regras").join("\n"), dica: "Uma regra por linha." },
+        { k: "links", rot: "Links (Zello e outros)", ta: true, rows: 4, valor: C("links").map(function (l) { return l.nome + " | " + l.url; }).join("\n"), dica: "Um por linha, assim: Nome | https://endereço" }
+      ],
+      valida: function (v) {
+        var ruim = listaLinhas(v.links).some(function (l) { var p = partes(l); return !p[0] || !/^https:\/\//i.test(p[1] || ""); });
+        return ruim ? "Cada link precisa de um nome e de um endereço que comece com https://" : "";
+      },
+      aplicar: function (v) {
+        var links = listaLinhas(v.links).map(function (l) { var p = partes(l); return { nome: p[0], url: p.slice(1).join("|").trim() }; });
+        salvarCont("regras", listaLinhas(v.regras), "Regras salvas").then(function () { return salvarCont("links", links, "Regras e links salvos"); });
+      }
+    });
+  }
+
+  function abrirDia(i) {
+    var novo = i === null, d = novo ? { data: "", titulo: "", itens: [] } : C("dias")[i];
+    abrirEditor({
+      titulo: novo ? "Adicionar dia" : "Editar dia", sub: novo ? null : d.data + " · " + d.titulo,
+      campos: [
+        { k: "data", rot: "Data", valor: d.data, ph: "Ex.: Seg 30/11", max: 30 },
+        { k: "titulo", rot: "Título", valor: d.titulo, max: 90 },
+        { k: "itens", rot: "O que acontece", ta: true, rows: 8, valor: (d.itens || []).join("\n"), dica: "Um item por linha." }
+      ],
+      valida: function (v) { return v.titulo.trim() ? "" : "O dia precisa de um título."; },
+      aplicar: function (v) {
+        var lista = C("dias").slice(), nd = { data: v.data.trim(), titulo: v.titulo.trim(), itens: listaLinhas(v.itens) };
+        if (novo) lista.push(nd); else lista[i] = nd;
+        salvarCont("dias", lista, "Cronograma atualizado");
+      },
+      apagar: novo ? null : function () { var lista = C("dias").slice(); lista.splice(i, 1); salvarCont("dias", lista, "Dia removido"); },
+      rotApagar: "Remover este dia", msgApagar: "Remover este dia do cronograma? Isso não dá para desfazer."
+    });
+  }
+  function salvarRoteiro(r, msg) { return salvarCont("roteiro", r, msg || "Roteiro atualizado"); }
+  function abrirNotaRoteiro() {
+    var r = C("roteiro");
+    abrirEditor({
+      titulo: "Texto do roteiro", campos: [{ k: "nota", rot: "Texto de apresentação", ta: true, rows: 3, valor: r.nota || "", max: 400 }],
+      aplicar: function (v) { salvarRoteiro({ nota: v.nota.trim(), fases: r.fases }); }
+    });
+  }
+  function abrirFase(i) {
+    var novo = i === null, r = C("roteiro"), f = novo ? { nome: "", itens: [] } : r.fases[i];
+    abrirEditor({
+      titulo: novo ? "Adicionar fase" : "Editar fase", sub: novo ? null : f.nome,
+      campos: [
+        { k: "nome", rot: "Nome da fase", valor: f.nome, ph: "Ex.: Evento, dia 1 (02/12)", max: 90 },
+        { k: "itens", rot: "Horários", ta: true, rows: 10, max: 4000, valor: (f.itens || []).map(function (it) { return it[2] ? it.join(" | ") : it[0] + " | " + it[1]; }).join("\n"), dica: "Uma linha por item: horário | o que fazer | detalhe (opcional)" }
+      ],
+      valida: function (v) { return v.nome.trim() ? "" : "A fase precisa de um nome."; },
+      aplicar: function (v) {
+        var itens = listaLinhas(v.itens).map(function (l) { var p = partes(l); return p.length === 1 ? ["", p[0], ""] : [p[0], p[1], p.slice(2).join(" | ")]; });
+        var fases = r.fases.slice(), nf = { nome: v.nome.trim(), itens: itens };
+        if (novo) fases.push(nf); else fases[i] = nf;
+        salvarRoteiro({ nota: r.nota, fases: fases });
+      },
+      apagar: novo ? null : function () { var fases = r.fases.slice(); fases.splice(i, 1); salvarRoteiro({ nota: r.nota, fases: fases }, "Fase removida"); },
+      rotApagar: "Remover esta fase", msgApagar: "Remover esta fase e todos os horários dela? Isso não dá para desfazer."
+    });
+  }
+
+  function abrirGuia(a) {
+    var campos = [
+      { k: "etiqueta", rot: "Etiqueta (canto da imagem)", valor: a.etiqueta, max: 60 },
+      { k: "titulo", rot: "Título", ta: true, rows: 2, valor: a.titulo, max: 120, dica: "Uma quebra de linha separa o título em duas linhas." },
+      { k: "sub", rot: "Subtítulo", valor: a.sub, max: 120 }
+    ];
+    a.grupos.forEach(function (g, i) {
+      campos.push({ k: "gn" + i, rot: "Bloco " + (i + 1) + ": nome", valor: g.nome, max: 30 });
+      campos.push({ k: "gl" + i, rot: "Bloco " + (i + 1) + ": legenda", valor: g.legenda, max: 60 });
+      campos.push({ k: "gi" + i, rot: "Bloco " + (i + 1) + ": itens", ta: true, rows: 4, valor: g.itens.map(function (it) { return it[0] + " | " + it[1]; }).join("\n"), dica: "Uma linha por item: quando | o que usar" });
+    });
+    campos.push({ k: "r0", rot: "Regra: rótulo", valor: a.regra[0], max: 40 });
+    campos.push({ k: "r1", rot: "Regra: texto", ta: true, rows: 3, valor: a.regra[1], max: 300 });
+    abrirEditor({
+      titulo: "Editar aviso", sub: "Guia pronto para o WhatsApp.", campos: campos,
+      valida: function (v) { return v.titulo.trim() ? "" : "O aviso precisa de um título."; },
+      aplicar: function (v) {
+        var n = JSON.parse(JSON.stringify(a));
+        n.etiqueta = v.etiqueta.trim(); n.titulo = v.titulo.trim(); n.sub = v.sub.trim();
+        n.grupos.forEach(function (g, i) {
+          g.nome = v["gn" + i].trim(); g.legenda = v["gl" + i].trim();
+          g.itens = listaLinhas(v["gi" + i]).map(function (l) { var p = partes(l); return [p[0], p.slice(1).join(" | ")]; });
+        });
+        n.regra = [v.r0.trim(), v.r1.trim()];
+        salvarCont("avisosFixos", C("avisosFixos").map(function (x) { return x.id === a.id ? n : x; }), "Aviso atualizado");
+      },
+      apagar: function () { salvarCont("avisosFixos", C("avisosFixos").filter(function (x) { return x.id !== a.id; }), "Aviso apagado"); },
+      rotApagar: "Apagar este aviso", msgApagar: "Apagar este aviso para todos?"
+    });
   }
 
   var TELAS = { inicio: telaInicio, tarefas: telaTarefas, equipe: telaEquipe, avisos: telaAvisos, cron: telaCron };
