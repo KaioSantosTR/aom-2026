@@ -12,6 +12,15 @@ window.startApp = function (D) {
       return { getItem: function (k) { return mem[k] === undefined ? null : mem[k]; }, setItem: function (k, v) { mem[k] = String(v); }, removeItem: function (k) { delete mem[k]; } };
     }
   })();
+  var SS = (function () {
+    var mem = {};
+    try {
+      var s = window.sessionStorage; s.setItem("aom-t", "1"); s.removeItem("aom-t");
+      return s;
+    } catch (e) {
+      return { getItem: function (k) { return mem[k] === undefined ? null : mem[k]; }, setItem: function (k, v) { mem[k] = String(v); }, removeItem: function (k) { delete mem[k]; } };
+    }
+  })();
   var ICON = {
     inicio: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
     tarefas: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/></svg>',
@@ -171,19 +180,28 @@ window.startApp = function (D) {
     var fim = function () { state.salvando--; if (!state.salvando) setTimeout(sincronizar, 400); };
     return api("POST", corpo).then(function (r) { fim(); return r; }, function (e) { fim(); throw e; });
   }
+  function chaveCache() { return usaPin() ? "aom-cache-adm" : "aom-cache"; }
+  function aplicarDados(r) {
+    setCont(r.conteudo || {});
+    state.tasks = deLinhas(r.linhas || []);
+    state.avisos = (r.avisos || []).map(function (x) { x.custom = true; return x; });
+  }
+  function carregarCache() {
+    try { var c = JSON.parse(SS.getItem(chaveCache()) || "null"); if (c && c.linhas) { aplicarDados(c); return true; } } catch (e) {}
+    return false;
+  }
   function tarefaPorId(id) { for (var i = 0; i < state.tasks.length; i++) if (state.tasks[i].id === id) return state.tasks[i]; return null; }
   function sincronizar() {
     if (state.modo !== "sync" || sincronizando) return Promise.resolve();
     sincronizando = true;
     var marca = state.mudancas;
     return api("GET").then(function (r) {
-      if (r && r.erro === "pin") { state.pin = ""; LS.removeItem("aom-pin"); sincronizando = false; return sincronizar(); }
+      if (r && r.erro === "pin") { state.pin = ""; LS.removeItem("aom-pin"); SS.removeItem("aom-cache-adm"); sincronizando = false; return sincronizar(); }
       if (!r || !r.ok) throw new Error("falha");
       state.versaoScript = r.versao || 0;
       if (state.salvando || marca !== state.mudancas) return;
-      if (r.conteudo) setCont(r.conteudo);
-      state.tasks = deLinhas(r.linhas);
-      if (r.avisos) state.avisos = r.avisos.map(function (x) { x.custom = true; return x; });
+      aplicarDados(r);
+      try { SS.setItem(chaveCache(), JSON.stringify({ linhas: r.linhas, avisos: r.avisos || [], conteudo: r.conteudo || {} })); } catch (e) {}
       state.ultimaSync = new Date(); state.erroSync = false;
       if (!sheetAberto()) render(); else renderBanner();
     }).catch(function () { state.erroSync = true; renderBanner(); })
@@ -827,6 +845,7 @@ window.startApp = function (D) {
       LS.setItem("aom-avisos", JSON.stringify(state.avisos));
       render(); toast("Aviso salvo neste aparelho"); return;
     }
+    toast("Salvando...");
     enviar({ por: quem, aviso: v }).then(function (r) {
       if (!r || !r.ok) throw new Error("falha");
       toast("Aviso salvo"); return sincronizar();
@@ -855,6 +874,7 @@ window.startApp = function (D) {
     if (valor === null) delete state.cont[secao]; else state.cont[secao] = valor;
     reindexar(); render();
     if (state.modo === "local") { LS.setItem("aom-cont", JSON.stringify(state.cont)); toast(msg || "Salvo neste aparelho"); return Promise.resolve(); }
+    toast("Salvando...");
     return enviar({ por: eu() ? eu().rotulo : "", conteudo: { secao: secao, valor: valor } }).then(function (r) {
       if (!r || !r.ok) throw new Error(r && r.erro || "falha");
       toast(msg || "Salvo");
@@ -1087,6 +1107,10 @@ window.startApp = function (D) {
     renderNav(); renderQuem(); renderBanner(); renderRodape();
     var v = $("view"); v.textContent = "";
     try {
+      if (state.modo === "sync" && !state.ultimaSync && !state.temCache && !state.erroSync) {
+        v.appendChild(h("section", { "class": "card" }, [h("p", { "class": "muted", text: "Carregando os dados da planilha..." })]));
+        $("fab").hidden = true; return;
+      }
       var tela = TELAS[state.view]();
       if ((state.view === "equipe" || state.view === "cron" || state.view === "avisos") && !admin()) {
         if (nomeAdmin()) tela.insertBefore(h("section", { "class": "card" }, [
@@ -1102,7 +1126,7 @@ window.startApp = function (D) {
         h("h2", { text: "Algo deu errado nesta tela" }),
         h("p", { "class": "muted", text: String(e && e.message || e) }),
         h("button", { type: "button", "class": "btn", text: "Limpar dados deste aparelho e recarregar", onclick: function () {
-          try { LS.removeItem("aom-local"); LS.removeItem("aom-me"); } catch (x) {}
+          try { LS.removeItem("aom-local"); LS.removeItem("aom-me"); SS.removeItem("aom-cache"); SS.removeItem("aom-cache-adm"); } catch (x) {}
           location.reload();
         } })
       ]));
@@ -1122,6 +1146,7 @@ window.startApp = function (D) {
   $("fab").onclick = abrirNova;
   try { carregarBase(); }
   catch (e) { try { LS.removeItem("aom-local"); } catch (x) {} carregarBase(); }
+  if (state.modo === "sync") state.temCache = carregarCache();
   contagem(); setInterval(contagem, 60000);
   render();
   if (state.modo === "sync") {
