@@ -140,7 +140,7 @@ window.startApp = function (D) {
       state.tasks = state.tasks.filter(function (x) { return x !== t; });
       render(); toast("Tarefa apagada neste aparelho"); return;
     }
-    api("POST", { id: t.id, apagar: true, por: eu() ? eu().rotulo : "" }).then(function (r) {
+    enviar({ id: t.id, apagar: true, por: eu() ? eu().rotulo : "" }).then(function (r) {
       if (!r || !r.ok) throw new Error(r && r.erro || "falha");
       state.tasks = state.tasks.filter(function (x) { return x !== t; });
       render(); toast("Tarefa apagada");
@@ -164,17 +164,28 @@ window.startApp = function (D) {
     });
   }
   var sincronizando = false;
+  state.salvando = 0; state.mudancas = 0; state.versaoScript = null;
+  var VERSAO_SCRIPT = 4;
+  function enviar(corpo) {
+    state.salvando++; state.mudancas++;
+    var fim = function () { state.salvando--; if (!state.salvando) setTimeout(sincronizar, 400); };
+    return api("POST", corpo).then(function (r) { fim(); return r; }, function (e) { fim(); throw e; });
+  }
+  function tarefaPorId(id) { for (var i = 0; i < state.tasks.length; i++) if (state.tasks[i].id === id) return state.tasks[i]; return null; }
   function sincronizar() {
     if (state.modo !== "sync" || sincronizando) return Promise.resolve();
     sincronizando = true;
+    var marca = state.mudancas;
     return api("GET").then(function (r) {
       if (r && r.erro === "pin") { state.pin = ""; LS.removeItem("aom-pin"); sincronizando = false; return sincronizar(); }
       if (!r || !r.ok) throw new Error("falha");
+      state.versaoScript = r.versao || 0;
+      if (state.salvando || marca !== state.mudancas) return;
       if (r.conteudo) setCont(r.conteudo);
       state.tasks = deLinhas(r.linhas);
       if (r.avisos) state.avisos = r.avisos.map(function (x) { x.custom = true; return x; });
       state.ultimaSync = new Date(); state.erroSync = false;
-      if (!sheetAberto()) render();
+      if (!sheetAberto()) render(); else renderBanner();
     }).catch(function () { state.erroSync = true; renderBanner(); })
       .then(function () { sincronizando = false; });
   }
@@ -200,16 +211,25 @@ window.startApp = function (D) {
     if (patch.titulo !== undefined) corpo.titulo = patch.titulo;
     if (patch.desc !== undefined) corpo.desc = patch.desc;
     if (patch.quando !== undefined) corpo.quando = rotuloMomento(patch.quando);
-    api("POST", corpo).then(function (r) {
-      if (!r || !r.ok) throw new Error(r && r.erro || "falha");
+    toast("Salvando...");
+    enviar(corpo).then(function (r) {
+      if (!r || !r.ok) { var er = new Error(r && r.erro || "falha"); er.r = r; throw er; }
+      if (r.linha) {
+        var novo = deLinhas([r.linha])[0], alvo = tarefaPorId(t.id) || t;
+        if (novo) Object.keys(novo).forEach(function (k) { alvo[k] = novo[k]; });
+        if (!sheetAberto()) render();
+      }
       toast("Salvo na planilha");
     }).catch(function (err) {
-      Object.keys(antes).forEach(function (k) { t[k] = antes[k]; });
+      var alvo = tarefaPorId(t.id) || t;
+      Object.keys(antes).forEach(function (k) { alvo[k] = antes[k]; });
       render();
-      var m = err && err.message;
+      var m = err && err.message, r = err && err.r;
       if (m === "pin") { state.pin = ""; LS.removeItem("aom-pin"); render(); toast("O PIN de administrador não foi aceito. Entre de novo.", true); }
       else if (m === "permissao") toast("Só quem é responsável pela tarefa ou administrador pode fazer isso.", true);
-      else toast("Não consegui salvar. Tente de novo.", true);
+      else if (m === "nao_gravou") toast("A planilha não gravou: " + ((r && r.campos) || []).join(", ") + ". Avise o Kaio.", true);
+      else if (m === "excecao") toast("Erro na planilha: " + (r && r.detalhe || "desconhecido"), true);
+      else toast("Não consegui salvar. Confira a internet e tente de novo.", true);
     });
   }
 
@@ -382,7 +402,8 @@ window.startApp = function (D) {
 
     if (t.por) corpo.appendChild(h("p", { "class": "meta", text: "Última alteração: " + t.por + (t.em ? ", " + t.em : "") }));
     var botoes = [h("button", { type: "button", "class": "btn ghost", text: pode ? "Cancelar" : "Fechar", onclick: fecharSheet })];
-    if (pode) botoes.push(h("button", { type: "button", "class": "btn", text: "Salvar", onclick: function () {
+    if (pode) botoes.push(h("button", { type: "button", "class": "btn", text: "Salvar", onclick: function () { salvarForm(false); } }));
+    function salvarForm(seguir) {
       exigirNome(function () {
         var patch = {};
         if (draft.status !== t.status) patch.status = draft.status;
@@ -398,9 +419,14 @@ window.startApp = function (D) {
         if (obs.value.trim() !== (t.obs || "")) patch.obs = obs.value.trim();
         fecharSheet();
         if (Object.keys(patch).length) salvar(t, patch);
+        if (seguir) {
+          var prox = proximaSemDono(t);
+          if (prox) abrirTarefa(prox); else toast("Todas as tarefas pendentes já têm responsável.");
+        }
       });
-    } }));
+    }
     corpo.appendChild(h("div", { "class": "btns" }, botoes));
+    if (adm && proximaSemDono(t)) corpo.appendChild(h("button", { type: "button", "class": "link big", text: "Salvar e abrir a próxima sem responsável", onclick: function () { salvarForm(true); } }));
     if (adm) {
       var zona = h("div", { "class": "apagar" });
       var desenharApagar = function (confirmando) {
@@ -448,7 +474,7 @@ window.startApp = function (D) {
             var t = { id: "N-" + Date.now().toString(36), quando: quando, titulo: titulo, desc: "", status: "A fazer", resp: draft.resp.slice(), sug: [], obs: "", por: quem, em: agoraTxt() };
             state.tasks.push(t); salvarLocal(t); render(); toast("Tarefa criada neste aparelho");
           } else {
-            api("POST", { por: quem, novo: { titulo: titulo, desc: "", quando: rotuloMomento(quando), resp: toLabels(draft.resp), restrita: privada.checked } })
+            enviar({ por: quem, novo: { titulo: titulo, desc: "", quando: rotuloMomento(quando), resp: toLabels(draft.resp), restrita: privada.checked } })
               .then(function (r) { if (!r || !r.ok) throw new Error("falha"); toast("Tarefa criada"); return sincronizar(); })
               .catch(function () { toast("Não consegui criar a tarefa.", true); });
           }
@@ -479,6 +505,12 @@ window.startApp = function (D) {
   ];
   function filtroFn(id) { for (var i = 0; i < FILTROS.length; i++) if (FILTROS[i][0] === id) return FILTROS[i][2]; return FILTROS[0][2]; }
   function operacionais() { return state.tasks.filter(function (t) { return t.quando !== "prep"; }); }
+  function proximaSemDono(atual) {
+    var ordem = state.momentos.map(function (m) { return m.id; });
+    var lista = operacionais().filter(function (t) { return t.id !== atual.id && !feito(t) && !t.resp.length; });
+    lista.sort(function (a, b) { return ordem.indexOf(a.quando) - ordem.indexOf(b.quando); });
+    return lista[0] || null;
+  }
 
   function irPara(view, filtro, abrir) {
     state.view = view; if (filtro) state.filtro = filtro;
@@ -795,7 +827,7 @@ window.startApp = function (D) {
       LS.setItem("aom-avisos", JSON.stringify(state.avisos));
       render(); toast("Aviso salvo neste aparelho"); return;
     }
-    api("POST", { por: quem, aviso: v }).then(function (r) {
+    enviar({ por: quem, aviso: v }).then(function (r) {
       if (!r || !r.ok) throw new Error("falha");
       toast("Aviso salvo"); return sincronizar();
     }).catch(function () { toast("Não consegui salvar o aviso. Confira se o script da planilha foi atualizado.", true); });
@@ -806,7 +838,7 @@ window.startApp = function (D) {
       LS.setItem("aom-avisos", JSON.stringify(state.avisos));
       render(); toast("Aviso apagado neste aparelho"); return;
     }
-    api("POST", { por: eu() ? eu().rotulo : "", avisoApagar: a.id }).then(function (r) {
+    enviar({ por: eu() ? eu().rotulo : "", avisoApagar: a.id }).then(function (r) {
       if (!r || !r.ok) throw new Error("falha");
       state.avisos = state.avisos.filter(function (x) { return x.id !== a.id; });
       render(); toast("Aviso apagado");
@@ -823,7 +855,7 @@ window.startApp = function (D) {
     if (valor === null) delete state.cont[secao]; else state.cont[secao] = valor;
     reindexar(); render();
     if (state.modo === "local") { LS.setItem("aom-cont", JSON.stringify(state.cont)); toast(msg || "Salvo neste aparelho"); return Promise.resolve(); }
-    return api("POST", { por: eu() ? eu().rotulo : "", conteudo: { secao: secao, valor: valor } }).then(function (r) {
+    return enviar({ por: eu() ? eu().rotulo : "", conteudo: { secao: secao, valor: valor } }).then(function (r) {
       if (!r || !r.ok) throw new Error(r && r.erro || "falha");
       toast(msg || "Salvo");
     }).catch(function () {
@@ -1042,8 +1074,9 @@ window.startApp = function (D) {
   function renderBanner() {
     var b = $("banner"), msg = "";
     if (state.erroSync) msg = "Sem conexão com a planilha. Você está vendo a última versão carregada.";
+    else if (state.modo === "sync" && state.versaoScript !== null && state.versaoScript < VERSAO_SCRIPT && nomeAdmin()) msg = "O script da planilha está desatualizado e os responsáveis não estão sendo gravados. Atualize o script: Implantar > Gerenciar implantações > editar > Nova versão.";
     else if (state.modo === "local") msg = "Modo de teste: o que você marcar fica só neste aparelho.";
-    b.hidden = !msg; b.textContent = msg; b.className = "banner" + (state.erroSync ? " erro" : "");
+    b.hidden = !msg; b.textContent = msg; b.className = "banner" + (state.erroSync || msg.indexOf("desatualizado") >= 0 ? " erro" : "");
   }
   function renderRodape() {
     var t = state.modo === "sync" ? (state.ultimaSync ? "Atualizado às " + state.ultimaSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "Carregando...") : "Dados de " + D.evento.atualizado;
