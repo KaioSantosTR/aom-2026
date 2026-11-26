@@ -244,3 +244,11 @@ textarea{resize:vertical}
 .novo-aviso{width:100%}
 
 .form input.ro,.form textarea.ro{opacity:.55}
+
+.adm-badge{margin-left:6px;padding:1px 7px;border-radius:9px;background:var(--gold);color:#04172b;font-size:.66rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.muted.pad{padding:6px 4px 14px}
+
+.adm-badge{margin-left:4px;padding:0 5px;font-size:.58rem}
+#countdown strong,#countdown span{white-space:nowrap}
+
+.avatar.adm{box-shadow:0 0 0 2px var(--gold)}

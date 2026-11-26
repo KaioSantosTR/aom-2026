@@ -1035,7 +1035,7 @@ window.startApp = function (D) {
   function renderQuem() {
     var b = $("who"); b.textContent = "";
     var e = eu();
-    if (e) { b.appendChild(h("span", { "class": "avatar sm", text: e.rotulo.split(" ").map(function (x) { return x.charAt(0); }).join("") })); b.appendChild(h("span", { "class": "who-n", text: e.nome })); }
+    if (e) { b.appendChild(h("span", { "class": "avatar sm" + (admin() ? " adm" : ""), title: admin() ? "Administrador" : null, text: e.rotulo.split(" ").map(function (x) { return x.charAt(0); }).join("") })); b.appendChild(h("span", { "class": "who-n", text: e.nome })); }
     else b.appendChild(h("span", { "class": "who-n", text: state.me === "_" ? "Só leitura" : "Quem é você?" }));
     b.onclick = function () { abrirNome(); };
   }
@@ -1053,7 +1053,17 @@ window.startApp = function (D) {
     var y = window.scrollY;
     renderNav(); renderQuem(); renderBanner(); renderRodape();
     var v = $("view"); v.textContent = "";
-    try { v.appendChild(TELAS[state.view]()); }
+    try {
+      var tela = TELAS[state.view]();
+      if ((state.view === "equipe" || state.view === "cron" || state.view === "avisos") && !admin()) {
+        if (nomeAdmin()) tela.insertBefore(h("section", { "class": "card" }, [
+          h("p", { "class": "muted", text: "Para editar, criar ou apagar nesta página, entre como administrador." }),
+          h("button", { type: "button", "class": "btn", text: "Entrar como administrador", onclick: function () { abrirPin(null, true); } })
+        ]), tela.firstChild);
+        else tela.appendChild(h("p", { "class": "muted pad", text: state.me ? "Esta página é editada pelos administradores. Para entrar como administrador, toque no seu nome no topo e escolha Kaio ou Vini." : "Para editar, toque em “Quem é você?” no topo e escolha o seu nome. Esta página é editada pelos administradores." }));
+      }
+      v.appendChild(tela);
+    }
     catch (e) {
       v.appendChild(h("div", { "class": "card" }, [
         h("h2", { text: "Algo deu errado nesta tela" }),
