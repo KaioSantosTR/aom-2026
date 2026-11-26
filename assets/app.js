@@ -541,7 +541,7 @@ window.startApp = function (D) {
         var b = h("div", { "class": "p-body" });
         var u = h("ul", { "class": "bul" }); p.resp.forEach(function (r) { u.appendChild(h("li", { text: r })); });
         b.appendChild(u);
-        b.appendChild(h("p", { "class": "meta", text: p.completo + (p.telConferir ? " (confirmar o telefone)" : "") }));
+        b.appendChild(h("p", { "class": "meta", text: p.completo }));
         b.appendChild(contato(p));
         if (minhas.length) { var rows = h("div", { "class": "rows" }); minhas.forEach(function (t) { rows.appendChild(linha(t)); }); b.appendChild(h("h3", { text: "Pendências" })); b.appendChild(rows); }
         card.appendChild(b);
