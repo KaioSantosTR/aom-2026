@@ -174,7 +174,7 @@ window.startApp = function (D) {
   }
   var sincronizando = false;
   state.salvando = 0; state.mudancas = 0; state.versaoScript = null;
-  var VERSAO_SCRIPT = 4;
+  var VERSAO_SCRIPT = 5;
   function enviar(corpo) {
     state.salvando++; state.mudancas++;
     var fim = function () { state.salvando--; if (!state.salvando) setTimeout(sincronizar, 400); };
@@ -1094,7 +1094,7 @@ window.startApp = function (D) {
   function renderBanner() {
     var b = $("banner"), msg = "";
     if (state.erroSync) msg = "Sem conexão com a planilha. Você está vendo a última versão carregada.";
-    else if (state.modo === "sync" && state.versaoScript !== null && state.versaoScript < VERSAO_SCRIPT && nomeAdmin()) msg = "O script da planilha está desatualizado e os responsáveis não estão sendo gravados. Atualize o script: Implantar > Gerenciar implantações > editar > Nova versão.";
+    else if (state.modo === "sync" && state.versaoScript !== null && state.versaoScript < VERSAO_SCRIPT && nomeAdmin()) msg = "O script da planilha está desatualizado e os responsáveis não estão sendo gravados. Cole o script novo e atualize: Implantar > Gerenciar implantações > lápis > Versão: Nova versão > Implantar.";
     else if (state.modo === "local") msg = "Modo de teste: o que você marcar fica só neste aparelho.";
     b.hidden = !msg; b.textContent = msg; b.className = "banner" + (state.erroSync || msg.indexOf("desatualizado") >= 0 ? " erro" : "");
   }
