@@ -558,7 +558,7 @@ window.startApp = function (D) {
     var ul = h("ul", { "class": "bul" }); D.regras.forEach(function (r) { ul.appendChild(h("li", { text: r })); });
     var z = h("div", { "class": "contact" });
     D.links.forEach(function (l) { z.appendChild(h("a", { "class": "cbtn", href: l.url, target: "_blank", rel: "noopener", text: l.nome })); });
-    w.appendChild(cartao("Regras da equipe", null, [ul, h("h3", { text: "Zello" }), h("p", { "class": "muted", text: "Instale antes do evento e leve o seu fone de ouvido." }), z], "full"));
+    w.appendChild(cartao("Regras da equipe", null, [ul, h("h3", { text: "Zello" }), h("p", { "class": "muted", text: "Instale antes do evento. Uso de fones é essencial." }), z], "full"));
 
     var lista = h("div", { "class": "people" });
     D.equipe.forEach(function (p) {
