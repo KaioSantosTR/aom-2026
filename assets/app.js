@@ -16,7 +16,8 @@ window.startApp = function (D) {
     inicio: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
     tarefas: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/></svg>',
     equipe: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M17 14.2c2.3.3 4 2.1 4 4.8"/></svg>',
-    cron: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>'
+    cron: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+    avisos: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4a1 1 0 0 0 1 1h2l8 4V5L7 9H5a1 1 0 0 0-1 1z"/><path d="M18.5 9a4 4 0 0 1 0 6"/></svg>'
   };
 
   var state = {
@@ -419,18 +420,18 @@ window.startApp = function (D) {
 
   /* ---------- telas ---------- */
   function telaInicio() {
-    var w = h("div", { "class": "stack" });
+    var w = h("div", { "class": "home" }), main = h("div", { "class": "home-main" }), side = h("div", { "class": "home-side" });
     var ops = operacionais(), pend = ops.filter(function (t) { return !feito(t); });
     var e = eu();
     if (!state.me) {
-      w.appendChild(h("section", { "class": "card hello" }, [
+      side.appendChild(h("section", { "class": "card hello o1" }, [
         h("h2", { text: "Quem é você?" }),
         h("p", { "class": "muted", text: "Escolha seu nome para marcar tarefas e ver as suas." }),
         h("button", { type: "button", "class": "btn", text: "Escolher meu nome", onclick: function () { abrirNome(); } })
       ]));
     } else if (e) {
       var minhas = pend.filter(meu);
-      w.appendChild(h("section", { "class": "card hello" }, [
+      side.appendChild(h("section", { "class": "card hello o1" }, [
         h("h2", { text: "Olá, " + e.nome + "." }),
         h("p", { "class": "muted", text: minhas.length ? "Você tem " + minhas.length + (minhas.length === 1 ? " tarefa pendente." : " tarefas pendentes.") : "Nenhuma tarefa pendente com o seu nome." }),
         minhas.length ? botaoLink("Ver as minhas tarefas", function () { irPara("tarefas", "minhas"); }) : null,
@@ -446,21 +447,21 @@ window.startApp = function (D) {
     pendMom.slice(0, 5).forEach(function (t) { kids.push(linha(t)); });
     if (!pendMom.length) kids.push(h("p", { "class": "empty", text: "Tudo certo por aqui." }));
     else if (pendMom.length > 5) kids.push(botaoLink("Ver as outras " + (pendMom.length - 5), function () { irPara("tarefas", "pend", mid); }));
-    w.appendChild(cartao("Agora: " + rotuloMomento(mid), null, kids, "focus"));
+    main.appendChild(cartao("Agora: " + rotuloMomento(mid), null, kids, "focus o2"));
 
     var dec = state.tasks.filter(function (t) { return t.status === "Decidir"; });
     var dk = [];
     dec.slice(0, 4).forEach(function (t) { dk.push(linha(t)); });
     if (!dec.length) dk.push(h("p", { "class": "empty", text: "Nenhuma decisão em aberto." }));
     if (dec.length > 4) dk.push(botaoLink("Ver as " + dec.length + " decisões", function () { irPara("tarefas", "dec"); }));
-    w.appendChild(cartao("Falta decidir (" + dec.length + ")", "Pontos da reunião que ainda precisam de uma resposta.", dk));
+    side.appendChild(cartao("Falta decidir (" + dec.length + ")", "Pontos da reunião que ainda precisam de uma resposta.", dk, "o3"));
 
     var sem = pend.filter(function (t) { return !t.resp.length; });
-    w.appendChild(cartao("Sem responsável", null, [
+    side.appendChild(cartao("Sem responsável", null, [
       h("p", { "class": "big-n", text: String(sem.length) }),
       h("p", { "class": "muted", text: sem.length === 1 ? "tarefa ainda sem dono" : "tarefas ainda sem dono" }),
       sem.length ? botaoLink("Ver quais são", function () { irPara("tarefas", "sem"); }) : null
-    ]));
+    ], "o4"));
 
     var chips = h("div", { "class": "mom-strip" });
     state.momentos.forEach(function (m) {
@@ -471,7 +472,8 @@ window.startApp = function (D) {
         h("b", { text: m.curto }), h("span", { text: f + "/" + ts.length })
       ]));
     });
-    w.appendChild(cartao("Por momento", null, [chips]));
+    main.appendChild(cartao("Por momento", null, [chips], "o5"));
+    w.appendChild(main); w.appendChild(side);
     return w;
   }
 
@@ -483,6 +485,11 @@ window.startApp = function (D) {
       barra.appendChild(h("button", { type: "button", "class": "fchip" + (state.filtro === f[0] ? " on" : ""), role: "tab", "aria-selected": state.filtro === f[0] ? "true" : "false", onclick: function () { state.filtro = f[0]; render(); } }, [f[1], h("span", { text: String(n) })]));
     });
     w.appendChild(barra);
+    w.appendChild(h("p", { "class": "legenda" }, [
+      "Toque no círculo para avançar: ",
+      h("span", { "class": "lg s-fazer", text: "A fazer" }), h("span", { "class": "lg s-and", text: "Em andamento" }),
+      h("span", { "class": "lg s-feito", text: "Feito" }), h("span", { "class": "lg s-dec", text: "Decidir" })
+    ]));
     var fn = filtroFn(state.filtro), mid = momentoAtual(), algum = false;
     state.momentos.forEach(function (m) {
       var todas = state.tasks.filter(function (t) { return t.quando === m.id; });
@@ -520,10 +527,9 @@ window.startApp = function (D) {
   function telaEquipe() {
     var w = h("div", { "class": "stack" });
     var ul = h("ul", { "class": "bul" }); D.regras.forEach(function (r) { ul.appendChild(h("li", { text: r })); });
-    w.appendChild(cartao("Regras da equipe", null, [ul]));
     var z = h("div", { "class": "contact" });
     D.links.forEach(function (l) { z.appendChild(h("a", { "class": "cbtn", href: l.url, target: "_blank", rel: "noopener", text: l.nome })); });
-    w.appendChild(cartao("Zello", "Instale antes do evento e leve o seu fone de ouvido.", [z]));
+    w.appendChild(cartao("Regras da equipe", null, [ul, h("h3", { text: "Zello" }), h("p", { "class": "muted", text: "Instale antes do evento e leve o seu fone de ouvido." }), z], "full"));
 
     var lista = h("div", { "class": "people" });
     D.equipe.forEach(function (p) {
@@ -579,8 +585,51 @@ window.startApp = function (D) {
     return w;
   }
 
-  var TELAS = { inicio: telaInicio, tarefas: telaTarefas, equipe: telaEquipe, cron: telaCron };
-  var NAV = [["inicio", "Início"], ["tarefas", "Tarefas"], ["equipe", "Equipe"], ["cron", "Cronograma"]];
+  function telaAvisos() {
+    var w = h("div", { "class": "stack avisos" });
+    (D.avisos || []).forEach(function (a) {
+      var cv = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": a.titulo + ". Imagem pronta para o WhatsApp." });
+      var msg = h("p", { "class": "meta", role: "status" });
+      var pronto = window.AomAviso.desenhar(cv, a).catch(function () { msg.textContent = "Não consegui montar a imagem. Recarregue a página."; });
+      function arquivo(fn) {
+        pronto.then(function () {
+          cv.toBlob(function (b) {
+            if (!b) { msg.textContent = "Não consegui gerar a imagem."; return; }
+            fn(new File([b], "aom-2026-" + a.id + ".png", { type: "image/png" }));
+          }, "image/png");
+        });
+      }
+      function baixar(f) {
+        var u = URL.createObjectURL(f), l = h("a", { href: u, download: f.name });
+        document.body.appendChild(l); l.click(); l.remove();
+        setTimeout(function () { URL.revokeObjectURL(u); }, 4000);
+        toast("Imagem baixada");
+      }
+      var enviar = h("button", { type: "button", "class": "btn", text: "Compartilhar imagem", onclick: function () {
+        arquivo(function (f) {
+          if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f] }).catch(function () {});
+          else baixar(f);
+        });
+      } });
+      var baixa = h("button", { type: "button", "class": "btn ghost", text: "Baixar imagem", onclick: function () { arquivo(baixar); } });
+      var copia = h("button", { type: "button", "class": "btn ghost", text: "Copiar texto", onclick: function () {
+        var t = window.AomAviso.texto(a);
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { toast("Texto copiado"); }, function () { toast("Não consegui copiar.", true); });
+        else toast("Seu navegador não permite copiar daqui.", true);
+      } });
+      w.appendChild(cartao(a.titulo, "Imagem 1080 x 1080 pronta para o WhatsApp.", [cv, h("div", { "class": "acoes" }, [enviar, baixa, copia]), msg]));
+    });
+    if (!(D.avisos || []).length) w.appendChild(h("p", { "class": "empty pad", text: "Nenhum aviso por enquanto." }));
+    else {
+      var ul = h("ul", { "class": "bul" });
+      ["No celular: toque em Compartilhar imagem e escolha o WhatsApp.", "No computador: baixe a imagem e arraste para a conversa.", "Copiar texto leva a mesma mensagem, para colar junto com a imagem."].forEach(function (x) { ul.appendChild(h("li", { text: x })); });
+      w.appendChild(cartao("Como enviar", null, [ul]));
+    }
+    return w;
+  }
+
+  var TELAS = { inicio: telaInicio, tarefas: telaTarefas, equipe: telaEquipe, avisos: telaAvisos, cron: telaCron };
+  var NAV = [["inicio", "Início"], ["tarefas", "Tarefas"], ["equipe", "Equipe"], ["avisos", "Avisos"], ["cron", "Cronograma"]];
 
   function renderNav() {
     var nav = $("nav"); nav.textContent = "";
