@@ -29,6 +29,8 @@ window.startApp = function (D) {
 
   var byNome = {}, byRotulo = {};
   D.equipe.forEach(function (p) { byNome[p.nome] = p; byRotulo[p.rotulo] = p; });
+  if (state.me && state.me !== "_" && !byNome[state.me]) state.me = "";
+  state.pin = LS.getItem("aom-pin") || "";
 
   function $(id) { return document.getElementById(id); }
   function h(tag, attrs, kids) {
@@ -55,6 +57,8 @@ window.startApp = function (D) {
       .map(function (l) { return l === "Todos" ? "Todos" : (byRotulo[l] ? byRotulo[l].nome : l); });
   }
   function eu() { return state.me && state.me !== "_" && byNome[state.me] ? byNome[state.me] : null; }
+  function nomeAdmin() { var e = eu(); return !!e && (D.admins || []).indexOf(e.nome) >= 0; }
+  function admin() { return nomeAdmin() && (state.modo === "local" || !!state.pin); }
   function agoraTxt() {
     return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date());
   }
@@ -80,7 +84,7 @@ window.startApp = function (D) {
     try { var st = JSON.parse(LS.getItem("aom-local") || "{}"); over = st.over || {}; novas = st.novas || []; } catch (e) {}
     state.tasks = D.tarefas.map(function (t) {
       var o = over[t.id] || {};
-      return { id: t.id, quando: t.quando, titulo: t.titulo, desc: t.desc, status: o.status || t.status,
+      return { id: t.id, quando: o.quando || t.quando, titulo: o.titulo || t.titulo, desc: o.desc !== undefined ? o.desc : t.desc, status: o.status || t.status,
         resp: o.resp || t.resp.slice(), sug: t.sug.slice(), obs: o.obs || "", por: o.por || "", em: o.em || "" };
     }).concat(novas);
   }
@@ -91,7 +95,7 @@ window.startApp = function (D) {
     var idx = -1;
     st.novas.forEach(function (n, i) { if (n.id === t.id) idx = i; });
     if (idx >= 0) st.novas[idx] = t;
-    else st.over[t.id] = { status: t.status, resp: t.resp, obs: t.obs, por: t.por, em: t.em };
+    else st.over[t.id] = { status: t.status, resp: t.resp, obs: t.obs, por: t.por, em: t.em, titulo: t.titulo, desc: t.desc, quando: t.quando };
     LS.setItem("aom-local", JSON.stringify(st));
   }
 
@@ -99,6 +103,7 @@ window.startApp = function (D) {
     var url = D.sync.url;
     if (metodo === "GET") return fetch(url + (url.indexOf("?") >= 0 ? "&" : "?") + "k=" + encodeURIComponent(D.sync.key)).then(function (r) { return r.json(); });
     corpo.k = D.sync.key;
+    if (state.pin) corpo.pin = state.pin;
     return fetch(url, { method: "POST", body: JSON.stringify(corpo) }).then(function (r) { return r.json(); });
   }
   function status_(s) { return STATUS.indexOf(s) >= 0 ? s : "A fazer"; }
@@ -138,12 +143,19 @@ window.startApp = function (D) {
     if (patch.status !== undefined) corpo.status = patch.status;
     if (patch.resp !== undefined) corpo.resp = toLabels(patch.resp);
     if (patch.obs !== undefined) corpo.obs = patch.obs;
+    if (patch.titulo !== undefined) corpo.titulo = patch.titulo;
+    if (patch.desc !== undefined) corpo.desc = patch.desc;
+    if (patch.quando !== undefined) corpo.quando = rotuloMomento(patch.quando);
     api("POST", corpo).then(function (r) {
-      if (!r || !r.ok) throw new Error("falha");
+      if (!r || !r.ok) throw new Error(r && r.erro || "falha");
       toast("Salvo na planilha");
-    }).catch(function () {
+    }).catch(function (err) {
       Object.keys(antes).forEach(function (k) { t[k] = antes[k]; });
-      render(); toast("Não consegui salvar. Tente de novo.", true);
+      render();
+      var m = err && err.message;
+      if (m === "pin") { state.pin = ""; LS.removeItem("aom-pin"); render(); toast("O PIN de administrador não foi aceito. Entre de novo.", true); }
+      else if (m === "permissao") toast("Só quem é responsável pela tarefa ou administrador pode fazer isso.", true);
+      else toast("Não consegui salvar. Tente de novo.", true);
     });
   }
 
@@ -151,7 +163,12 @@ window.startApp = function (D) {
     if (eu()) { depois(); return; }
     abrirNome(depois);
   }
-  function ciclo(t) { exigirNome(function () { salvar(t, { status: NEXT[t.status] }); }); }
+  function ciclo(t) {
+    exigirNome(function () {
+      if (admin() || (meu(t) && t.status !== "Decidir")) salvar(t, { status: NEXT[t.status] });
+      else { toast(t.status === "Decidir" ? "Esse ponto ainda precisa de decisão." : "Assuma a tarefa para atualizar o status."); abrirTarefa(t); }
+    });
+  }
 
   /* ---------- sheet (janela inferior) ---------- */
   function sheetAberto() { return !$("sheet").hidden; }
@@ -176,6 +193,7 @@ window.startApp = function (D) {
     D.equipe.forEach(function (p) {
       lista.appendChild(h("button", { type: "button", "class": "pick-item", onclick: function () {
         state.me = p.nome; LS.setItem("aom-me", p.nome); fecharSheet(); render();
+        if (nomeAdmin() && state.modo === "sync" && !state.pin) { abrirPin(depois); return; }
         if (depois) depois(); else toast("Olá, " + p.nome + ".");
       } }, [h("b", { text: p.nome }), h("span", { text: p.papel })]));
     });
@@ -183,6 +201,32 @@ window.startApp = function (D) {
       state.me = "_"; LS.setItem("aom-me", "_"); fecharSheet(); render(); toast("Modo só leitura. Escolha seu nome para editar.");
     } }, [h("b", { text: "Só quero ver" }), h("span", { text: "Sem editar nada" })]));
     abrirSheet("Quem é você?", "Assim a equipe sabe quem atualizou cada tarefa.", lista);
+  }
+
+  function abrirPin(depois) {
+    var corpo = h("form", { "class": "form", autocomplete: "off" });
+    corpo.appendChild(h("p", { "class": "muted", text: "Administradores criam e editam tarefas. Os demais só assumem tarefas e atualizam as suas." }));
+    var pin = h("input", { type: "password", id: "f-pin", inputmode: "numeric", autocomplete: "off", placeholder: "PIN de administrador", "aria-label": "PIN de administrador" });
+    var msg = h("p", { "class": "meta", role: "alert" });
+    corpo.appendChild(pin); corpo.appendChild(msg);
+    corpo.appendChild(h("div", { "class": "btns" }, [
+      h("button", { type: "button", "class": "btn ghost", text: "Agora não", onclick: function () { fecharSheet(); if (depois) depois(); } }),
+      h("button", { type: "submit", "class": "btn", text: "Entrar" })
+    ]));
+    corpo.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var v = pin.value.trim();
+      if (!v) return;
+      msg.textContent = "Verificando...";
+      var antes = state.pin; state.pin = v;
+      api("POST", { por: eu() ? eu().rotulo : "", ping: true }).then(function (r) {
+        if (!r || !r.ok) throw new Error("pin");
+        LS.setItem("aom-pin", v); fecharSheet(); render(); toast("Acesso de administrador liberado");
+        if (depois) depois();
+      }).catch(function () { state.pin = antes; msg.textContent = "PIN incorreto ou sem conexão. Tente de novo."; });
+    });
+    abrirSheet("Acesso de administrador", eu() ? eu().nome : null, corpo);
+    setTimeout(function () { pin.focus(); }, 50);
   }
 
   function chipsResp(sel) {
@@ -204,56 +248,90 @@ window.startApp = function (D) {
   }
 
   function abrirTarefa(t) {
+    var adm = admin(), e = eu(), minha = meu(t);
+    var pode = adm || (minha && t.status !== "Decidir");
     var draft = { status: t.status, resp: t.resp.slice() };
     var corpo = h("div", { "class": "form" });
-    if (t.desc) corpo.appendChild(h("p", { "class": "desc", text: t.desc }));
+    var tit, desc, quando;
+    if (adm) {
+      corpo.appendChild(h("label", { "class": "lbl", "for": "f-tit", text: "Tarefa" }));
+      tit = h("input", { id: "f-tit", type: "text", maxlength: "120" }); tit.value = t.titulo; corpo.appendChild(tit);
+      corpo.appendChild(h("label", { "class": "lbl", "for": "f-desc", text: "Descrição" }));
+      desc = h("textarea", { id: "f-desc", rows: "3", maxlength: "300" }); desc.value = t.desc || ""; corpo.appendChild(desc);
+      corpo.appendChild(h("label", { "class": "lbl", "for": "f-q", text: "Quando" }));
+      quando = h("select", { id: "f-q" });
+      state.momentos.forEach(function (m) { quando.appendChild(h("option", { value: m.id, text: m.rotulo })); });
+      quando.value = t.quando; corpo.appendChild(quando);
+    } else if (t.desc) corpo.appendChild(h("p", { "class": "desc", text: t.desc }));
 
     corpo.appendChild(h("label", { "class": "lbl", text: "Status" }));
     var seg = h("div", { "class": "seg" });
     function desenharSeg() {
       seg.textContent = "";
       STATUS.forEach(function (s) {
+        if (!adm && s === "Decidir") return;
         seg.appendChild(h("button", { type: "button", "class": "seg-b s-" + CLS[s] + (draft.status === s ? " on" : ""), "aria-pressed": draft.status === s ? "true" : "false", text: s, onclick: function () { draft.status = s; desenharSeg(); } }));
       });
     }
-    desenharSeg(); corpo.appendChild(seg);
+    if (pode) { desenharSeg(); corpo.appendChild(seg); }
+    else corpo.appendChild(h("p", { "class": "desc", text: t.status + (t.status === "Decidir" ? ". Esse ponto ainda precisa de uma decisão." : ". Para atualizar, assuma a tarefa.") }));
 
     corpo.appendChild(h("label", { "class": "lbl", text: "Responsável" }));
-    var chips = chipsResp(draft.resp);
-    corpo.appendChild(chips);
     var acoes = h("div", { "class": "mini" });
-    if (eu()) acoes.appendChild(h("button", { type: "button", "class": "link", text: "Assumir esta tarefa", onclick: function () {
-      if (draft.resp.indexOf(eu().nome) < 0) draft.resp.push(eu().nome);
-      var novo = chipsResp(draft.resp); chips.replaceWith(novo); chips = novo;
-    } }));
-    if (!t.resp.length && t.sug.length) acoes.appendChild(h("button", { type: "button", "class": "link", text: "Usar a sugestão: " + t.sug.join(", "), onclick: function () {
-      draft.resp.length = 0; t.sug.forEach(function (n) { draft.resp.push(n); });
-      var novo = chipsResp(draft.resp); chips.replaceWith(novo); chips = novo;
-    } }));
+    if (adm) {
+      var chips = chipsResp(draft.resp);
+      corpo.appendChild(chips);
+      if (!t.resp.length && t.sug.length) acoes.appendChild(h("button", { type: "button", "class": "link", text: "Usar a sugestão: " + t.sug.join(", "), onclick: function () {
+        draft.resp.length = 0; t.sug.forEach(function (n) { draft.resp.push(n); });
+        var novo = chipsResp(draft.resp); chips.replaceWith(novo); chips = novo;
+      } }));
+    } else {
+      corpo.appendChild(h("p", { "class": "desc", text: t.resp.length ? t.resp.join(", ") : "Ninguém assumiu ainda." }));
+      if (!e) acoes.appendChild(h("button", { type: "button", "class": "btn", text: "Escolher meu nome para assumir", onclick: function () { abrirNome(function () { abrirTarefa(t); }); } }));
+      else if (t.resp.indexOf(e.nome) >= 0) acoes.appendChild(h("button", { type: "button", "class": "link", text: "Largar esta tarefa", onclick: function () {
+        fecharSheet(); salvar(t, { resp: t.resp.filter(function (n) { return n !== e.nome; }) });
+      } }));
+      else if (t.resp.indexOf("Todos") < 0) acoes.appendChild(h("button", { type: "button", "class": "btn", text: "Assumir esta tarefa", onclick: function () {
+        fecharSheet(); salvar(t, { resp: t.resp.concat([e.nome]) });
+      } }));
+    }
     corpo.appendChild(acoes);
 
-    corpo.appendChild(h("label", { "class": "lbl", "for": "f-obs", text: "Observação" }));
-    var obs = h("textarea", { id: "f-obs", rows: "2", maxlength: "200", placeholder: "Opcional" }); obs.value = t.obs || "";
-    corpo.appendChild(obs);
+    var obs;
+    if (pode) {
+      corpo.appendChild(h("label", { "class": "lbl", "for": "f-obs", text: "Observação" }));
+      obs = h("textarea", { id: "f-obs", rows: "2", maxlength: "200", placeholder: "Opcional" }); obs.value = t.obs || "";
+      corpo.appendChild(obs);
+    } else if (t.obs) {
+      corpo.appendChild(h("label", { "class": "lbl", text: "Observação" }));
+      corpo.appendChild(h("p", { "class": "desc", text: t.obs }));
+    }
 
     if (t.por) corpo.appendChild(h("p", { "class": "meta", text: "Última alteração: " + t.por + (t.em ? ", " + t.em : "") }));
-    corpo.appendChild(h("div", { "class": "btns" }, [
-      h("button", { type: "button", "class": "btn ghost", text: "Cancelar", onclick: fecharSheet }),
-      h("button", { type: "button", "class": "btn", text: "Salvar", onclick: function () {
-        exigirNome(function () {
-          var patch = {};
-          if (draft.status !== t.status) patch.status = draft.status;
+    var botoes = [h("button", { type: "button", "class": "btn ghost", text: pode ? "Cancelar" : "Fechar", onclick: fecharSheet })];
+    if (pode) botoes.push(h("button", { type: "button", "class": "btn", text: "Salvar", onclick: function () {
+      exigirNome(function () {
+        var patch = {};
+        if (draft.status !== t.status) patch.status = draft.status;
+        if (adm) {
           if (draft.resp.join("|") !== t.resp.join("|")) patch.resp = draft.resp.slice();
-          if (obs.value.trim() !== (t.obs || "")) patch.obs = obs.value.trim();
-          fecharSheet();
-          if (Object.keys(patch).length) salvar(t, patch);
-        });
-      } })
-    ]));
-    abrirSheet(t.titulo, rotuloMomento(t.quando), corpo);
+          var nt = tit.value.trim();
+          if (!nt) { tit.focus(); toast("A tarefa precisa de um título.", true); return; }
+          if (nt !== t.titulo) patch.titulo = nt;
+          if (desc.value.trim() !== (t.desc || "")) patch.desc = desc.value.trim();
+          if (quando.value !== t.quando) patch.quando = quando.value;
+        }
+        if (obs.value.trim() !== (t.obs || "")) patch.obs = obs.value.trim();
+        fecharSheet();
+        if (Object.keys(patch).length) salvar(t, patch);
+      });
+    } }));
+    corpo.appendChild(h("div", { "class": "btns" }, botoes));
+    abrirSheet(adm ? "Editar tarefa" : t.titulo, rotuloMomento(t.quando), corpo);
   }
 
   function abrirNova() {
+    if (!admin()) { if (nomeAdmin()) abrirPin(); else toast("Só os administradores criam tarefas.", true); return; }
     var draft = { resp: [] };
     var corpo = h("div", { "class": "form" });
     corpo.appendChild(h("label", { "class": "lbl", "for": "n-t", text: "O que precisa ser feito?" }));
@@ -355,7 +433,8 @@ window.startApp = function (D) {
       w.appendChild(h("section", { "class": "card hello" }, [
         h("h2", { text: "Olá, " + e.nome + "." }),
         h("p", { "class": "muted", text: minhas.length ? "Você tem " + minhas.length + (minhas.length === 1 ? " tarefa pendente." : " tarefas pendentes.") : "Nenhuma tarefa pendente com o seu nome." }),
-        minhas.length ? botaoLink("Ver as minhas tarefas", function () { irPara("tarefas", "minhas"); }) : null
+        minhas.length ? botaoLink("Ver as minhas tarefas", function () { irPara("tarefas", "minhas"); }) : null,
+        nomeAdmin() && !admin() ? botaoLink("Entrar como administrador", function () { abrirPin(); }) : null
       ]));
     }
 
@@ -544,7 +623,7 @@ window.startApp = function (D) {
         } })
       ]));
     }
-    $("fab").hidden = state.view !== "tarefas";
+    $("fab").hidden = state.view !== "tarefas" || !admin();
     window.scrollTo(0, y);
   }
 
