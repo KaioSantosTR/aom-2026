@@ -236,3 +236,7 @@ textarea{resize:vertical}
 .tag.adm{background:rgba(240,178,60,.18);color:#f0b23c}
 .chk{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:.92rem;min-height:44px;cursor:pointer}
 .chk input{width:22px;height:22px;accent-color:#e0471a;flex:none}
+
+.link.danger{color:#ff8a6a}
+.btn.danger{background:#b3261e;border-color:#b3261e;color:#fff}
+.apagar{margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)}

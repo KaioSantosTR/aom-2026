@@ -82,8 +82,9 @@ window.startApp = function (D) {
 
   function carregarBase() {
     var over = {}, novas = [];
-    try { var st = JSON.parse(LS.getItem("aom-local") || "{}"); over = st.over || {}; novas = st.novas || []; } catch (e) {}
-    state.tasks = D.tarefas.map(function (t) {
+    var apagadas = [];
+    try { var st = JSON.parse(LS.getItem("aom-local") || "{}"); over = st.over || {}; novas = st.novas || []; apagadas = st.apagadas || []; } catch (e) {}
+    state.tasks = D.tarefas.filter(function (t) { return apagadas.indexOf(t.id) < 0; }).map(function (t) {
       var o = over[t.id] || {};
       return { id: t.id, quando: o.quando || t.quando, titulo: o.titulo || t.titulo, desc: o.desc !== undefined ? o.desc : t.desc, status: o.status || t.status,
         resp: o.resp || t.resp.slice(), sug: t.sug.slice(), res: o.res || [], adm: false, obs: o.obs || "", por: o.por || "", em: o.em || "" };
@@ -100,6 +101,22 @@ window.startApp = function (D) {
     LS.setItem("aom-local", JSON.stringify(st));
   }
 
+  function apagar(t) {
+    if (state.modo === "local") {
+      var st = {};
+      try { st = JSON.parse(LS.getItem("aom-local") || "{}"); } catch (e) {}
+      st.apagadas = (st.apagadas || []).concat([t.id]);
+      st.novas = (st.novas || []).filter(function (n) { return n.id !== t.id; });
+      LS.setItem("aom-local", JSON.stringify(st));
+      state.tasks = state.tasks.filter(function (x) { return x !== t; });
+      render(); toast("Tarefa apagada neste aparelho"); return;
+    }
+    api("POST", { id: t.id, apagar: true, por: eu() ? eu().rotulo : "" }).then(function (r) {
+      if (!r || !r.ok) throw new Error(r && r.erro || "falha");
+      state.tasks = state.tasks.filter(function (x) { return x !== t; });
+      render(); toast("Tarefa apagada");
+    }).catch(function () { toast("Não consegui apagar. Tente de novo.", true); });
+  }
   function usaPin() { return nomeAdmin() && !!state.pin; }
   function api(metodo, corpo) {
     var url = D.sync.url;
@@ -353,6 +370,22 @@ window.startApp = function (D) {
       });
     } }));
     corpo.appendChild(h("div", { "class": "btns" }, botoes));
+    if (adm) {
+      var zona = h("div", { "class": "apagar" });
+      var desenharApagar = function (confirmando) {
+        zona.textContent = "";
+        if (!confirmando) zona.appendChild(h("button", { type: "button", "class": "link danger", text: "Apagar esta tarefa", onclick: function () { desenharApagar(true); } }));
+        else {
+          zona.appendChild(h("p", { "class": "meta", text: "Apagar \"" + t.titulo + "\" para todos? Isso não dá para desfazer." }));
+          zona.appendChild(h("div", { "class": "btns" }, [
+            h("button", { type: "button", "class": "btn ghost", text: "Não apagar", onclick: function () { desenharApagar(false); } }),
+            h("button", { type: "button", "class": "btn danger", text: "Sim, apagar", onclick: function () { fecharSheet(); apagar(t); } })
+          ]));
+        }
+      };
+      desenharApagar(false);
+      corpo.appendChild(zona);
+    }
     abrirSheet(adm ? "Editar tarefa" : t.titulo, rotuloMomento(t.quando), corpo);
   }
 
