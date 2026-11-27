@@ -213,7 +213,8 @@ window.AomAviso = (function () {
       }
       function destaque(w) {
         m.font = "600 27px " + FONTE;
-        var dl = quebrar(m, a.dt, w - 56);
+        var dl = [];
+        String(a.dt).split("\n").forEach(function (par) { if (par.trim()) quebrar(m, par.trim(), w - 56).forEach(function (l) { dl.push(l); }); });
         return { w: w, dl: dl, h: 28 + (a.dr ? 40 : 0) + dl.length * 34 + 22 };
       }
       function montar(H) {
@@ -294,7 +295,7 @@ window.AomAviso = (function () {
       var u = "*" + String(a.titulo).replace(/\n/g, " ") + "*";
       if (a.sub) u += "\n" + a.sub;
       if (a.texto) u += "\n\n" + String(a.texto).replace(/^\s*\u2022\s+/gm, "- ").trim();
-      if (a.dt) u += "\n\n" + (a.dr ? "*" + a.dr + "* " : "") + a.dt;
+      if (a.dt) u += "\n\n" + (a.dr ? "*" + a.dr + "*" + (/\n/.test(a.dt) ? "\n" : " ") : "") + a.dt;
       return u;
     }
     var t = "*" + String(a.titulo).replace(/\n/g, " ") + "*\n" + a.sub + "\n";

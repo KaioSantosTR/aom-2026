@@ -840,9 +840,9 @@ window.startApp = function (D) {
   function abrirAviso(a) {
     var novo = !a;
     var corpo = h("div", { "class": "form" });
-    function campo(rot, id, valor, ph, area) {
+    function campo(rot, id, valor, ph, area, linhas, max) {
       corpo.appendChild(h("label", { "class": "lbl", "for": id, text: rot }));
-      var el = area ? h("textarea", { id: id, rows: "7", maxlength: "1800", placeholder: ph || "" }) : h("input", { id: id, type: "text", maxlength: "120", placeholder: ph || "" });
+      var el = area ? h("textarea", { id: id, rows: String(linhas || 7), maxlength: String(max || 1800), placeholder: ph || "" }) : h("input", { id: id, type: "text", maxlength: "120", placeholder: ph || "" });
       el.value = valor || ""; corpo.appendChild(el);
       return el;
     }
@@ -859,7 +859,7 @@ window.startApp = function (D) {
       h("p", { "class": "meta", text: "{contagem} vira “" + window.AomAviso.preencher({ t: "{contagem}" }).t + "” e se atualiza sozinho (use {Contagem} no começo da frase). Emojis funcionam. Uma linha só com um link vai apenas no texto do WhatsApp, não na imagem." })
     ]));
     var dr = campo("Destaque: título (opcional)", "a-dr", novo ? "" : a.dr, "Ex.: Importante:");
-    var dt = campo("Destaque: texto (opcional)", "a-dt", novo ? "" : a.dt, "Aparece na caixa laranja no fim da imagem");
+    var dt = campo("Destaque: texto (opcional)", "a-dt", novo ? "" : a.dt, "Aparece na caixa laranja no fim da imagem. Até 300 caracteres, pode quebrar linha.", true, 4, 300);
     corpo.appendChild(h("label", { "class": "lbl", text: "Prévia da imagem" }));
     var cv = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": "Prévia do aviso" });
     var sf = seletorFig(novo ? {} : a, function () { previa(); });
