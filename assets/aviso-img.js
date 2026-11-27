@@ -4,6 +4,24 @@ window.AomAviso = (function () {
   var FONTE = '"Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"';
   var cache = {};
   var cfg = { inicio: "" };
+  var FIGS = ["Que isso?!", "Boa!", "Merecido!", "Enfim, a hipocrisia", "Não é possível!", "Mandou bem!", "Meta batida!", "Save the date", "Cadê dezembro?", "Está chegando!",
+    "Eu não vejo a hora!", "Já pode ser dia 02?", "É hoje!", "Tudo normal!", "Sei não, hein...", "Como assim?!", "Stonks!", "Eu não tenho estrutura!", "Eu avisei!", "Expectativa x realidade",
+    "Calma lá!", "Deu bom, time!", "Segue o plano.", "Cadê?", "Eu quero é prêmio!", "Olha isso...", "Tá tudo sob controle!", "Ah, pronto!", "Me explica isso!", "Não acredito!",
+    "É sobre isso!", "Pode isso, produção?", "Socorro!", "Hum... interessante.", "Vou ficar quieto.", "Por favor...", "Sei não...", "Deu ruim...", "Meme do incêndio", "Meme do incêndio 2"];
+  function figSrc(n) { return "assets/fig/" + n + ".webp"; }
+  function figura(a) {
+    var n = parseInt(a && a.fig, 10);
+    if (!(n >= 1 && n <= FIGS.length)) return Promise.resolve(null);
+    return img(figSrc(n)).catch(function () { return null; });
+  }
+  function colar(ctx, im, a, y, z) {
+    var x = a.figPos === "centro" ? (S - z) / 2 : a.figPos === "esq" ? 78 : 1002 - z;
+    ctx.save();
+    ctx.translate(x + z / 2, y + z / 2); ctx.rotate(a.figPos === "esq" ? 0.06 : -0.06);
+    ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 10;
+    ctx.drawImage(im, -z / 2, -z / 2, z, z);
+    ctx.restore();
+  }
   var SO_LINK = /^\s*https?:\/\/\S+\s*$/i;
 
   function contagem() {
@@ -74,17 +92,34 @@ window.AomAviso = (function () {
     ctx.restore();
   }
 
+  function alturaGuia(a) {
+    var m = document.createElement("canvas").getContext("2d");
+    m.font = "800 62px " + FONTE;
+    var y = 244;
+    String(a.titulo).split("\n").forEach(function (par) { y += quebrar(m, par, 920).length * 72; });
+    m.font = "500 25px " + FONTE;
+    var altP = 0;
+    a.grupos.forEach(function (gr) {
+      var h = 142;
+      gr.itens.forEach(function (it) { h += 24 + quebrar(m, it[1], 398).length * 31 + 30; });
+      altP = Math.max(altP, h);
+    });
+    return y + 22 + altP + 22 + 126;
+  }
+
   function desenharGuia(canvas, a) {
-    canvas.width = S; canvas.height = S;
-    return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png")]).then(function (im) {
+    return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png"), figura(a)]).then(function (im) {
+      var H = S;
+      if (im[3]) { var fimP = alturaGuia(a); if (S - 84 - fimP < 260) H = fimP + 300 + 40 + 84; }
+      canvas.width = S; canvas.height = H;
       var ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#04172b"; ctx.fillRect(0, 0, S, S);
+      ctx.fillStyle = "#04172b"; ctx.fillRect(0, 0, S, H);
       var g = ctx.createRadialGradient(920, 120, 0, 920, 120, 760);
       g.addColorStop(0, "rgba(240,178,60,0.14)"); g.addColorStop(1, "rgba(240,178,60,0)");
-      ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, S, H);
       ctx.globalAlpha = 0.14; ctx.drawImage(im[2], 560, -250, 760, 760); ctx.globalAlpha = 1;
-      ctx.fillStyle = "#e0471a"; ctx.fillRect(0, 0, 22, S);
-      ctx.fillStyle = "#f0b23c"; ctx.fillRect(0, S - 70, 22, 70);
+      ctx.fillStyle = "#e0471a"; ctx.fillRect(0, 0, 22, H);
+      ctx.fillStyle = "#f0b23c"; ctx.fillRect(0, H - 70, 22, 70);
 
       var lh = 92, lw = im[0].width * lh / im[0].height;
       ctx.drawImage(im[0], 78, 54, lw, lh);
@@ -137,9 +172,13 @@ window.AomAviso = (function () {
       var ly = ry + 40;
       quebrar(ctx, a.regra[1], 868).forEach(function (l) { ly += 34; ctx.fillText(l, 110, ly); });
       canvas.dataset.fim = String(ry + rh);
+      if (im[3]) {
+        var livre = H - 84 - (ry + rh), fz = Math.min(300, livre - 20);
+        if (fz >= 130) colar(ctx, im[3], a, ry + rh + (livre - fz) / 2 + 4, fz);
+      }
 
-      ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE; ctx.fillText("AOM 2026  |  Campinas/SP", 78, 1046);
-      var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, 1020, tw, 36);
+      ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE; ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
+      var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36);
       return canvas;
     });
   }
@@ -152,7 +191,7 @@ window.AomAviso = (function () {
   }
 
   function desenharPadrao(canvas, a) {
-    return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png")]).then(function (im) {
+    return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png"), figura(a)]).then(function (im) {
       var m = document.createElement("canvas").getContext("2d");
       var FS = 34, LH = 48, PAD = 36, X = 78, W = 924;
       m.font = "800 62px " + FONTE;
@@ -185,7 +224,12 @@ window.AomAviso = (function () {
         ry = fim + (ops.length ? 26 : 0);
         fim = ry + rh;
       }
-      var H = Math.max(S, fim + 130);
+      var H = Math.max(S, fim + 130), fz = 0, fy = 0;
+      if (im[3]) {
+        fz = 300;
+        if (H - 84 - fim < fz + 40) H = fim + fz + 40 + 84;
+        fy = fim + (H - 84 - fim - fz) / 2 + 4;
+      }
 
       canvas.width = S; canvas.height = H;
       var ctx = canvas.getContext("2d");
@@ -234,6 +278,7 @@ window.AomAviso = (function () {
         dl.forEach(function (l) { dy += 34; ctx.fillText(l, 110, dy - (a.dr ? 0 : 6)); });
       }
 
+      if (im[3]) colar(ctx, im[3], a, fy, fz);
       ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE; ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
       var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36);
       return canvas;
@@ -259,5 +304,5 @@ window.AomAviso = (function () {
     return t + "\n*" + a.regra[0] + "* " + a.regra[1];
   }
 
-  return { desenhar: desenhar, texto: texto, preencher: preencher, tamanho: S, config: function (o) { Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); } };
+  return { desenhar: desenhar, texto: texto, preencher: preencher, tamanho: S, figuras: FIGS, figSrc: figSrc, config: function (o) { Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); } };
 })();

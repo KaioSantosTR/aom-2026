@@ -176,7 +176,7 @@ window.startApp = function (D) {
   }
   var sincronizando = false;
   state.salvando = 0; state.mudancas = 0; state.versaoScript = null;
-  var VERSAO_SCRIPT = 6;
+  var VERSAO_SCRIPT = 7;
   function enviar(corpo) {
     state.salvando++; state.mudancas++; renderConn();
     var fim = function (ok) { state.salvando--; if (ok) marcarSalvo(); renderConn(); if (!state.salvando) setTimeout(sincronizar, 400); };
@@ -862,8 +862,10 @@ window.startApp = function (D) {
     var dt = campo("Destaque: texto (opcional)", "a-dt", novo ? "" : a.dt, "Aparece na caixa laranja no fim da imagem");
     corpo.appendChild(h("label", { "class": "lbl", text: "Prévia da imagem" }));
     var cv = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": "Prévia do aviso" });
+    var sf = seletorFig(novo ? {} : a, function () { previa(); });
+    corpo.appendChild(sf.el);
     corpo.appendChild(cv);
-    function atual() { return { id: novo ? "" : a.id, etiqueta: et.value.trim(), titulo: ti.value.trim(), sub: su.value.trim(), texto: tx.value, dr: dr.value.trim(), dt: dt.value.trim() }; }
+    function atual() { var f = sf.valor(); return { id: novo ? "" : a.id, etiqueta: et.value.trim(), titulo: ti.value.trim(), sub: su.value.trim(), texto: tx.value, dr: dr.value.trim(), dt: dt.value.trim(), fig: f.fig, figPos: f.figPos }; }
     var tmr;
     function previa() { clearTimeout(tmr); tmr = setTimeout(function () { var v = atual(); if (!v.titulo) v.titulo = "Título do aviso"; window.AomAviso.desenhar(cv, v).catch(function () {}); }, 250); }
     [et, ti, su, tx, dr, dt].forEach(function (el) { el.addEventListener("input", previa); });
@@ -963,6 +965,46 @@ window.startApp = function (D) {
     } })]);
   }
 
+  function seletorFig(ini, aoMudar) {
+    var FIGS = window.AomAviso.figuras;
+    var st = { fig: ini.fig ? String(ini.fig) : "", pos: ini.figPos || "dir", on: !!ini.fig };
+    var box = h("div", { "class": "figsel" });
+    var chk = h("input", { type: "checkbox", id: "fig-on" });
+    chk.checked = st.on;
+    var corpo = h("div", { "class": "figsel-corpo" });
+    var grade = h("div", { "class": "figgrid", role: "listbox", "aria-label": "Figurinhas" });
+    var botoes = [];
+    FIGS.forEach(function (nome, i) {
+      var n = String(i + 1);
+      var b = h("button", { type: "button", "class": "figbtn", title: nome, "aria-label": nome, onclick: function () { st.fig = n; marcar(); aoMudar(); } },
+        [h("img", { src: window.AomAviso.figSrc(n), alt: "", loading: "lazy", width: "64", height: "64" })]);
+      b.dataset.n = n; botoes.push(b); grade.appendChild(b);
+    });
+    var pos = h("div", { "class": "seg figpos" });
+    [["esq", "Esquerda"], ["centro", "Centro"], ["dir", "Direita"]].forEach(function (p) {
+      var b = h("button", { type: "button", "class": "seg-b", text: p[1], onclick: function () { st.pos = p[0]; marcar(); aoMudar(); } });
+      b.dataset.p = p[0]; pos.appendChild(b);
+    });
+    function marcar() {
+      corpo.hidden = !st.on;
+      botoes.forEach(function (b) { var on = b.dataset.n === st.fig; b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false"); });
+      [].forEach.call(pos.children, function (b) { b.classList.toggle("on", b.dataset.p === st.pos); });
+    }
+    chk.addEventListener("change", function () {
+      st.on = chk.checked;
+      if (st.on && !st.fig) st.fig = "1";
+      marcar(); aoMudar();
+    });
+    box.appendChild(h("label", { "class": "chk", "for": "fig-on" }, [chk, h("span", { text: "Colocar uma figurinha na imagem" })]));
+    corpo.appendChild(grade);
+    corpo.appendChild(h("label", { "class": "lbl", text: "Posição" }));
+    corpo.appendChild(pos);
+    corpo.appendChild(h("p", { "class": "meta", text: "A figurinha entra no espaço livre embaixo do texto." }));
+    box.appendChild(corpo);
+    marcar();
+    return { el: box, valor: function () { return st.on && st.fig ? { fig: st.fig, figPos: st.pos } : { fig: "", figPos: "" }; } };
+  }
+
   function abrirEditor(o) {
     var corpo = h("div", { "class": "form" }), els = {};
     o.campos.forEach(function (c, i) {
@@ -975,6 +1017,7 @@ window.startApp = function (D) {
       corpo.appendChild(el); els[c.k] = el;
       if (c.dica) corpo.appendChild(h("p", { "class": "meta", text: c.dica }));
     });
+    if (o.extra) corpo.appendChild(o.extra);
     corpo.appendChild(h("div", { "class": "btns" }, [
       h("button", { type: "button", "class": "btn ghost", text: "Cancelar", onclick: fecharSheet }),
       h("button", { type: "button", "class": "btn", text: "Salvar", onclick: function () {
@@ -1113,11 +1156,17 @@ window.startApp = function (D) {
     });
     campos.push({ k: "r0", rot: "Regra: rótulo", valor: a.regra[0], max: 40 });
     campos.push({ k: "r1", rot: "Regra: texto", ta: true, rows: 3, valor: a.regra[1], max: 300 });
+    var cvG = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": "Prévia com a figurinha" });
+    var sfG = seletorFig(a, function () { var f = sfG.valor(), p = JSON.parse(JSON.stringify(a)); p.fig = f.fig; p.figPos = f.figPos; window.AomAviso.desenhar(cvG, p).catch(function () {}); });
+    var extra = h("div", null, [sfG.el, cvG]);
+    window.AomAviso.desenhar(cvG, a).catch(function () {});
     abrirEditor({
+      extra: extra,
       titulo: "Editar aviso", sub: "Guia pronto para o WhatsApp.", campos: campos,
       valida: function (v) { return v.titulo.trim() ? "" : "O aviso precisa de um título."; },
       aplicar: function (v) {
         var n = JSON.parse(JSON.stringify(a));
+        var fg = sfG.valor(); n.fig = fg.fig; n.figPos = fg.figPos;
         n.etiqueta = v.etiqueta.trim(); n.titulo = v.titulo.trim(); n.sub = v.sub.trim();
         n.grupos.forEach(function (g, i) {
           g.nome = v["gn" + i].trim(); g.legenda = v["gl" + i].trim();
