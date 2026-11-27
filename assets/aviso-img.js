@@ -9,7 +9,18 @@ window.AomAviso = (function () {
     if (!(a && a.fig)) return Promise.resolve(null);
     return img(FIG).catch(function () { return null; });
   }
-  function colar(ctx, im, H) { ctx.drawImage(im, S - FZ, H - FZ, FZ, FZ); }
+  function rodape(ctx, im, H) {
+    var tw = im[1].width * 36 / im[1].height;
+    ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE;
+    if (im[3]) {
+      ctx.drawImage(im[1], 78, H - 60, tw, 36);
+      ctx.fillText("|  AOM 2026  |  Campinas/SP", 78 + tw + 18, H - 34);
+      ctx.drawImage(im[3], S - FZ, H - FZ, FZ, FZ);
+    } else {
+      ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
+      ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36);
+    }
+  }
   var SO_LINK = /^\s*https?:\/\/\S+\s*$/i;
 
   function contagem() {
@@ -160,9 +171,7 @@ window.AomAviso = (function () {
       var ly = ry + 40;
       quebrar(ctx, a.regra[1], 868).forEach(function (l) { ly += 34; ctx.fillText(l, 110, ly); });
       canvas.dataset.fim = String(ry + rh);
-      ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE; ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
-      if (im[3]) colar(ctx, im[3], H);
-      else { var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36); }
+      rodape(ctx, im, H);
       return canvas;
     });
   }
@@ -257,9 +266,7 @@ window.AomAviso = (function () {
         dl.forEach(function (l) { dy += 34; ctx.fillText(l, 110, dy - (a.dr ? 0 : 6)); });
       }
 
-      ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE; ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
-      if (im[3]) colar(ctx, im[3], H);
-      else { var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36); }
+      rodape(ctx, im, H);
       return canvas;
     });
   }
