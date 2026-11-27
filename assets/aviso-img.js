@@ -4,18 +4,19 @@ window.AomAviso = (function () {
   var FONTE = '"Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"';
   var cache = {};
   var cfg = { inicio: "" };
-  var FIG = "assets/img/mascote.webp", FZ = 600, FIG_LIVRE = 450;
+  var FIG = "assets/img/mascote.webp", FZ = 600, FZ_MIN = 460, ZONA = 10, LN = 684, RODAPE = 110;
   function figura(a) {
     if (!(a && a.fig)) return Promise.resolve(null);
     return img(FIG).catch(function () { return null; });
   }
-  function rodape(ctx, im, H) {
+  function rodape(ctx, im, H, fz) {
+    fz = fz || FZ;
     var tw = im[1].width * 36 / im[1].height;
     ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE;
     if (im[3]) {
       ctx.drawImage(im[1], 78, H - 60, tw, 36);
       ctx.fillText("|  AOM 2026  |  Campinas/SP", 78 + tw + 18, H - 34);
-      ctx.drawImage(im[3], S - FZ, H - FZ, FZ, FZ);
+      ctx.drawImage(im[3], S - fz, H - fz, fz, fz);
     } else {
       ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
       ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36);
@@ -91,31 +92,40 @@ window.AomAviso = (function () {
     ctx.restore();
   }
 
-  function alturaGuia(a) {
-    var m = document.createElement("canvas").getContext("2d");
-    m.font = "800 62px " + FONTE;
-    var y = 244;
-    String(a.titulo).split("\n").forEach(function (par) { y += quebrar(m, par, 920).length * 72; });
-    m.font = "500 25px " + FONTE;
-    var altP = 0;
-    a.grupos.forEach(function (gr) {
-      var h = 142;
-      gr.itens.forEach(function (it) { h += 24 + quebrar(m, it[1], 398).length * 31 + 30; });
-      altP = Math.max(altP, h);
-    });
-    return y + 22 + altP + 22 + 126;
-  }
-
   function desenharGuia(canvas, a) {
     return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png"), figura(a)]).then(function (im) {
-      var H = S;
-      if (im[3]) H = Math.max(S, alturaGuia(a) + FIG_LIVRE);
+      var m = document.createElement("canvas").getContext("2d");
+      m.font = "800 62px " + FONTE;
+      var tit = [];
+      String(a.titulo).split("\n").forEach(function (par) { quebrar(m, par, 920).forEach(function (l) { tit.push(l); }); });
+      var topo = 244 + tit.length * 72 + 22, larg = 450, gap = 24, faixa = 108, lh2 = 31, esp = 30;
+      m.font = "500 25px " + FONTE;
+      var altP = 0;
+      a.grupos.forEach(function (gr) {
+        var h = faixa + 34;
+        gr.itens.forEach(function (it) { h += 24 + quebrar(m, it[1], larg - 52).length * lh2 + esp; });
+        altP = Math.max(altP, h);
+      });
+      var colFim = topo + altP, ry = colFim + 22;
+      function regra(w) {
+        m.font = "600 27px " + FONTE;
+        var ls = quebrar(m, a.regra[1], w - 56);
+        return { w: w, ls: ls, h: Math.max(126, 58 + ls.length * 34) };
+      }
+      var H = S, R = regra(924), fz = FZ;
+      if (im[3]) {
+        if (H - colFim + 46 < FZ_MIN) H = colFim + FZ_MIN - 46;
+        for (var k = 0; k < 4; k++) {
+          fz = Math.min(FZ, H - colFim + 46);
+          R = regra(924);
+          if (ry + R.h > H - fz + ZONA) R = regra(LN);
+          if (ry + R.h + RODAPE <= H) break;
+          H = ry + R.h + RODAPE;
+        }
+      }
       canvas.width = S; canvas.height = H;
       var ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#04172b"; ctx.fillRect(0, 0, S, H);
-      var g = ctx.createRadialGradient(920, 120, 0, 920, 120, 760);
-      g.addColorStop(0, "rgba(240,178,60,0.14)"); g.addColorStop(1, "rgba(240,178,60,0)");
-      ctx.fillStyle = g; ctx.fillRect(0, 0, S, H);
+      fundo(ctx, H);
       ctx.globalAlpha = 0.14; ctx.drawImage(im[2], 560, -250, 760, 760); ctx.globalAlpha = 1;
       ctx.fillStyle = "#e0471a"; ctx.fillRect(0, 0, 22, H);
       ctx.fillStyle = "#f0b23c"; ctx.fillRect(0, H - 70, 22, 70);
@@ -130,20 +140,10 @@ window.AomAviso = (function () {
 
       ctx.fillStyle = "#ffffff"; ctx.font = "800 62px " + FONTE;
       var y = 244;
-      String(a.titulo).split("\n").forEach(function (par) {
-        quebrar(ctx, par, 920).forEach(function (l) { ctx.fillText(l, 78, y); y += 72; });
-      });
+      tit.forEach(function (l) { ctx.fillText(l, 78, y); y += 72; });
       ctx.fillStyle = "#f0b23c"; ctx.font = "600 27px " + FONTE;
       ctx.fillText(a.sub, 78, y - 20);
 
-      var topo = y + 22, larg = 450, gap = 24, faixa = 108, lh2 = 31, esp = 30;
-      ctx.font = "500 25px " + FONTE;
-      var altP = 0;
-      a.grupos.forEach(function (gr) {
-        var h = faixa + 34;
-        gr.itens.forEach(function (it) { h += 24 + quebrar(ctx, it[1], larg - 52).length * lh2 + esp; });
-        altP = Math.max(altP, h);
-      });
       a.grupos.forEach(function (gr, i) {
         var x = 78 + i * (larg + gap), cor = COR[gr.cor] || "#f0b23c", texto = gr.cor === "gold" ? "#04172b" : "#ffffff";
         retangulo(ctx, x, topo, larg, altP, 22); ctx.fillStyle = "#0a2440"; ctx.fill();
@@ -163,15 +163,13 @@ window.AomAviso = (function () {
         });
       });
 
-      var ry = topo + altP + 22, rh = 126;
-      retangulo(ctx, 78, ry, 924, rh, 18); ctx.fillStyle = "rgba(224,71,26,0.18)"; ctx.fill();
-      ctx.fillStyle = "#e0471a"; ctx.fillRect(78, ry + 14, 8, rh - 28);
+      retangulo(ctx, 78, ry, R.w, R.h, 18); ctx.fillStyle = "rgba(224,71,26,0.18)"; ctx.fill();
+      ctx.fillStyle = "#e0471a"; ctx.fillRect(78, ry + 14, 8, R.h - 28);
       ctx.fillStyle = "#f0b23c"; ctx.font = "800 27px " + FONTE; ctx.fillText(a.regra[0], 110, ry + 40);
       ctx.fillStyle = "#ffffff"; ctx.font = "600 27px " + FONTE;
       var ly = ry + 40;
-      quebrar(ctx, a.regra[1], 868).forEach(function (l) { ly += 34; ctx.fillText(l, 110, ly); });
-      canvas.dataset.fim = String(ry + rh);
-      rodape(ctx, im, H);
+      R.ls.forEach(function (l) { ly += 34; ctx.fillText(l, 110, ly); });
+      rodape(ctx, im, H, fz);
       return canvas;
     });
   }
@@ -193,31 +191,47 @@ window.AomAviso = (function () {
       var y = 244 + tit.length * 72;
       var topo = a.sub ? y + 22 : y - 30;
 
-      m.font = "500 " + FS + "px " + FONTE;
-      var ops = [];
+      var brutas = [];
       String(a.texto || "").split("\n").forEach(function (raw) {
         var l = raw.replace(/\s+$/, "");
-        if (!l.trim()) { if (ops.length && ops[ops.length - 1].t !== "gap") ops.push({ t: "gap" }); return; }
+        if (!l.trim()) { if (brutas.length && brutas[brutas.length - 1].t !== "gap") brutas.push({ t: "gap" }); return; }
         if (SO_LINK.test(l)) return;
         var b = /^\s*[-\u2022]\s+(.*)$/.exec(l);
-        if (b) ops.push({ t: "b", linhas: quebrar(m, b[1], W - 2 * PAD - 38) });
-        else ops.push({ t: "p", linhas: quebrar(m, l.trim(), W - 2 * PAD) });
+        brutas.push(b ? { t: "b", s: b[1] } : { t: "p", s: l.trim() });
       });
-      while (ops.length && ops[ops.length - 1].t === "gap") ops.pop();
-      var corpoH = 0;
-      ops.forEach(function (o) { corpoH += o.t === "gap" ? 20 : o.linhas.length * LH + 8; });
-      var cardH = ops.length ? corpoH + 2 * PAD : 0;
-      var fim = ops.length ? topo + cardH : topo;
+      while (brutas.length && brutas[brutas.length - 1].t === "gap") brutas.pop();
 
-      var dl = [], rh = 0, ry = 0;
-      if (a.dt) {
-        m.font = "600 27px " + FONTE;
-        dl = quebrar(m, a.dt, 868);
-        rh = 28 + (a.dr ? 40 : 0) + dl.length * 34 + 22;
-        ry = fim + (ops.length ? 26 : 0);
-        fim = ry + rh;
+      function cartao(w) {
+        m.font = "500 " + FS + "px " + FONTE;
+        var h = 2 * PAD, ops = brutas.map(function (o) {
+          if (o.t === "gap") { h += 20; return o; }
+          var ls = quebrar(m, o.s, w - 2 * PAD - (o.t === "b" ? 38 : 0));
+          h += ls.length * LH + 8;
+          return { t: o.t, linhas: ls };
+        });
+        return { w: w, ops: ops, h: h };
       }
-      var H = Math.max(S, fim + (im[3] ? FIG_LIVRE : 130));
+      function destaque(w) {
+        m.font = "600 27px " + FONTE;
+        var dl = quebrar(m, a.dt, w - 56);
+        return { w: w, dl: dl, h: 28 + (a.dr ? 40 : 0) + dl.length * 34 + 22 };
+      }
+      function montar(H) {
+        var zona = im[3] ? H - FZ + ZONA : Infinity, C = null, D = null, fim = topo;
+        if (brutas.length) { C = cartao(W); if (topo + C.h > zona) C = cartao(LN); fim = topo + C.h; }
+        if (a.dt) {
+          var ry = fim + (C ? 26 : 0);
+          D = destaque(W); if (ry + D.h > zona) D = destaque(LN);
+          D.y = ry; fim = ry + D.h;
+        }
+        return { C: C, D: D, fim: fim };
+      }
+      var H = S, L = montar(H);
+      if (!im[3]) H = Math.max(S, L.fim + 130);
+      else {
+        for (var k = 0; k < 4 && L.fim + RODAPE > H; k++) { H = L.fim + RODAPE; L = montar(H); }
+        H = Math.max(H, L.fim + RODAPE);
+      }
 
       canvas.width = S; canvas.height = H;
       var ctx = canvas.getContext("2d");
@@ -238,12 +252,12 @@ window.AomAviso = (function () {
       tit.forEach(function (l) { ctx.fillText(l, X, ty); ty += 72; });
       if (a.sub) { ctx.fillStyle = "#f0b23c"; ctx.font = "600 27px " + FONTE; ctx.fillText(a.sub, X, ty - 20); }
 
-      if (ops.length) {
-        retangulo(ctx, X, topo, W, cardH, 22); ctx.fillStyle = "#0a2440"; ctx.fill();
+      if (L.C) {
+        retangulo(ctx, X, topo, L.C.w, L.C.h, 22); ctx.fillStyle = "#0a2440"; ctx.fill();
         ctx.strokeStyle = "#1b3b5f"; ctx.lineWidth = 2; ctx.stroke();
         var cy = topo + PAD;
         ctx.font = "500 " + FS + "px " + FONTE;
-        ops.forEach(function (o) {
+        L.C.ops.forEach(function (o) {
           if (o.t === "gap") { cy += 20; return; }
           o.linhas.forEach(function (l, i) {
             var base = cy + LH - 14;
@@ -257,13 +271,14 @@ window.AomAviso = (function () {
         });
       }
 
-      if (a.dt) {
-        retangulo(ctx, X, ry, W, rh, 18); ctx.fillStyle = "rgba(224,71,26,0.18)"; ctx.fill();
-        ctx.fillStyle = "#e0471a"; ctx.fillRect(X, ry + 14, 8, rh - 28);
-        var dy = ry + 22;
+      if (L.D) {
+        var D = L.D;
+        retangulo(ctx, X, D.y, D.w, D.h, 18); ctx.fillStyle = "rgba(224,71,26,0.18)"; ctx.fill();
+        ctx.fillStyle = "#e0471a"; ctx.fillRect(X, D.y + 14, 8, D.h - 28);
+        var dy = D.y + 22;
         if (a.dr) { ctx.fillStyle = "#f0b23c"; ctx.font = "800 27px " + FONTE; dy += 22; ctx.fillText(a.dr, 110, dy); dy += 18; }
         ctx.fillStyle = "#ffffff"; ctx.font = "600 27px " + FONTE;
-        dl.forEach(function (l) { dy += 34; ctx.fillText(l, 110, dy - (a.dr ? 0 : 6)); });
+        D.dl.forEach(function (l) { dy += 34; ctx.fillText(l, 110, dy - (a.dr ? 0 : 6)); });
       }
 
       rodape(ctx, im, H);
