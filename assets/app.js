@@ -176,7 +176,7 @@ window.startApp = function (D) {
   }
   var sincronizando = false;
   state.salvando = 0; state.mudancas = 0; state.versaoScript = null;
-  var VERSAO_SCRIPT = 5;
+  var VERSAO_SCRIPT = 6;
   function enviar(corpo) {
     state.salvando++; state.mudancas++; renderConn();
     var fim = function (ok) { state.salvando--; if (ok) marcarSalvo(); renderConn(); if (!state.salvando) setTimeout(sincronizar, 400); };
@@ -484,41 +484,60 @@ window.startApp = function (D) {
   }
 
   function abrirNova() {
-    if (!admin()) { if (nomeAdmin()) abrirPin(); else toast("Só os administradores criam tarefas.", true); return; }
-    var draft = { resp: [] };
+    if (!eu()) { exigirNome(abrirNova); return; }
+    var adm = admin();
+    var draft = { resp: adm ? [] : [eu().nome] };
     var corpo = h("div", { "class": "form" });
-    corpo.appendChild(h("label", { "class": "lbl", "for": "n-t", text: "O que precisa ser feito?" }));
+    corpo.appendChild(h("label", { "class": "lbl", "for": "n-t", text: "Título da tarefa" }));
     var tit = h("input", { id: "n-t", type: "text", maxlength: "120", placeholder: "Ex.: Levar extensões para a sala" });
     corpo.appendChild(tit);
+    corpo.appendChild(h("label", { "class": "lbl", "for": "n-d", text: "Descrição" }));
+    var desc = h("textarea", { id: "n-d", rows: "3", maxlength: "300", placeholder: "O que precisa ser feito, onde e qualquer detalhe importante" });
+    corpo.appendChild(desc);
     corpo.appendChild(h("label", { "class": "lbl", "for": "n-q", text: "Quando" }));
     var q = h("select", { id: "n-q" });
-    state.momentos.forEach(function (m) { q.appendChild(h("option", { value: m.id, text: m.rotulo })); });
+    state.momentos.forEach(function (m) { if (m.id !== "prep" || adm) q.appendChild(h("option", { value: m.id, text: m.rotulo })); });
     q.value = momentoAtual();
     corpo.appendChild(q);
     corpo.appendChild(h("label", { "class": "lbl", text: "Responsável" }));
-    corpo.appendChild(chipsResp(draft.resp));
-    var privada = h("input", { type: "checkbox", id: "n-priv" });
-    corpo.appendChild(h("label", { "class": "chk", "for": "n-priv" }, [privada, h("span", { text: "Só Kaio e Vini enxergam esta tarefa" })]));
+    var privada = null;
+    if (adm) {
+      corpo.appendChild(chipsResp(draft.resp));
+      privada = h("input", { type: "checkbox", id: "n-priv" });
+      corpo.appendChild(h("label", { "class": "chk", "for": "n-priv" }, [privada, h("span", { text: "Só Kaio e Vini enxergam esta tarefa" })]));
+    } else {
+      corpo.appendChild(h("p", { "class": "desc", text: "Você (" + eu().nome + ")" }));
+      corpo.appendChild(h("p", { "class": "meta", text: "A tarefa fica no seu nome. Para dar uma tarefa a outra pessoa, fale com o Kaio ou o Vini." }));
+    }
     corpo.appendChild(h("div", { "class": "btns" }, [
       h("button", { type: "button", "class": "btn ghost", text: "Cancelar", onclick: fecharSheet }),
       h("button", { type: "button", "class": "btn", text: "Criar tarefa", onclick: function () {
-        var titulo = tit.value.trim();
-        if (!titulo) { tit.focus(); toast("Escreva o que precisa ser feito.", true); return; }
-        exigirNome(function () {
-          var quem = eu().rotulo, quando = q.value;
-          fecharSheet();
-          if (state.modo === "local") {
-            var t = { id: "N-" + Date.now().toString(36), quando: quando, titulo: titulo, desc: "", status: "A fazer", resp: draft.resp.slice(), sug: [], obs: "", por: quem, em: agoraTxt() };
-            state.tasks.push(t); salvarLocal(t); render(); toast("Tarefa criada neste aparelho");
-          } else {
-            enviar({ por: quem, novo: { titulo: titulo, desc: "", quando: rotuloMomento(quando), resp: toLabels(draft.resp), restrita: privada.checked } })
-              .then(function (r) { if (!r || !r.ok) throw new Error("falha"); toast("Tarefa criada"); return sincronizar(); })
-              .catch(function () { toast("Não consegui criar a tarefa.", true); });
-          }
-        });
+        var titulo = tit.value.trim(), descricao = desc.value.trim();
+        if (!titulo) { tit.focus(); toast("Escreva o título da tarefa.", true); return; }
+        if (!descricao) { desc.focus(); toast("Escreva uma descrição para a tarefa.", true); return; }
+        var quem = eu().rotulo, quando = q.value;
+        fecharSheet();
+        if (state.modo === "local") {
+          var t = { id: "N-" + Date.now().toString(36), quando: quando, titulo: titulo, desc: descricao, status: "A fazer", resp: draft.resp.slice(), sug: [], res: [], obs: "", por: quem, em: agoraTxt() };
+          state.tasks.push(t); salvarLocal(t); render(); toast("Tarefa criada neste aparelho");
+          return;
+        }
+        toast("Salvando...");
+        enviar({ por: quem, novo: { titulo: titulo, desc: descricao, quando: rotuloMomento(quando), resp: toLabels(draft.resp), restrita: !!(privada && privada.checked) } })
+          .then(function (r) {
+            if (!r || !r.ok) throw new Error(r && r.erro || "falha");
+            if (r.id) state.salvos[r.id] = { em: Date.now(), por: quem, meu: true };
+            toast("Tarefa criada e salva na planilha"); return sincronizar();
+          })
+          .catch(function (e) {
+            var m = e && e.message;
+            if (m === "permissao") toast("Atualize o script da planilha para liberar a criação de tarefas para a equipe.", true);
+            else if (m === "desc") toast("A tarefa precisa de uma descrição.", true);
+            else toast("Não consegui criar a tarefa. Confira a internet e tente de novo.", true);
+          });
       } })
     ]));
-    abrirSheet("Nova tarefa", null, corpo);
+    abrirSheet("Nova tarefa", adm ? null : "Crie uma tarefa para você mesmo.", corpo);
   }
 
   /* ---------- consultas ---------- */
@@ -1152,7 +1171,7 @@ window.startApp = function (D) {
     renderConn();
     var b = $("banner"), msg = "";
     if (state.erroSync) msg = "Sem conexão com a planilha. Você está vendo a última versão carregada.";
-    else if (state.modo === "sync" && state.versaoScript !== null && state.versaoScript < VERSAO_SCRIPT && nomeAdmin()) msg = "O script da planilha está desatualizado e os responsáveis não estão sendo gravados. Cole o script novo e atualize: Implantar > Gerenciar implantações > lápis > Versão: Nova versão > Implantar.";
+    else if (state.modo === "sync" && state.versaoScript !== null && state.versaoScript < VERSAO_SCRIPT && nomeAdmin()) msg = "O script da planilha está desatualizado. Cole o script novo e atualize: Implantar > Gerenciar implantações > lápis > Versão: Nova versão > Implantar.";
     else if (state.modo === "local") msg = "Modo de teste: o que você marcar fica só neste aparelho.";
     b.hidden = !msg; b.textContent = msg; b.className = "banner" + (state.erroSync || msg.indexOf("desatualizado") >= 0 ? " erro" : "");
   }
@@ -1189,7 +1208,7 @@ window.startApp = function (D) {
         } })
       ]));
     }
-    $("fab").hidden = state.view !== "tarefas" || !admin();
+    $("fab").hidden = state.view !== "tarefas";
     window.scrollTo(0, y);
   }
 
