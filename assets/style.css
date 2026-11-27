@@ -252,3 +252,21 @@ textarea{resize:vertical}
 #countdown strong,#countdown span{white-space:nowrap}
 
 .avatar.adm{box-shadow:0 0 0 2px var(--gold)}
+
+.conn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:34px;height:34px;padding:0 9px;border-radius:17px;background:var(--card);border:1px solid var(--line);color:var(--muted);font-size:.74rem;font-weight:700;flex:none}
+.conn[hidden]{display:none}
+.conn .ic svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;display:block}
+.conn .dot{width:10px;height:10px;border-radius:50%;background:currentColor;display:block}
+.conn.ok,.conn.salvo{color:#3ddc84;border-color:rgba(61,220,132,.45);background:rgba(61,220,132,.1)}
+.conn.salvo{background:rgba(61,220,132,.22)}
+.conn.conectando .dot,.conn.salvando .dot{animation:pulsa 1s ease-in-out infinite}
+.conn.salvando{color:var(--gold);border-color:rgba(240,178,60,.45)}
+.conn.erro{color:#ff6a3d;border-color:rgba(255,106,61,.5);background:rgba(255,106,61,.12)}
+.conn-t{display:none}
+@media (min-width:520px){.conn-t{display:inline}}
+@keyframes pulsa{0%,100%{opacity:.35}50%{opacity:1}}
+.tag.salvo{display:inline-flex;align-items:center;gap:3px;background:rgba(61,220,132,.16);color:#3ddc84}
+.tag.salvo .ic svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;display:block}
+.tag.salvando{background:rgba(240,178,60,.16);color:var(--gold);animation:pulsa 1.2s ease-in-out infinite}
+@media (max-width:380px){.top-right{gap:8px}}
+@media (max-width:420px){.countdown span{display:none}.top-right{gap:8px}.top-row{gap:6px}}

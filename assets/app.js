@@ -26,7 +26,8 @@ window.startApp = function (D) {
     tarefas: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/></svg>',
     equipe: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M17 14.2c2.3.3 4 2.1 4 4.8"/></svg>',
     cron: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
-    avisos: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4a1 1 0 0 0 1 1h2l8 4V5L7 9H5a1 1 0 0 0-1 1z"/><path d="M18.5 9a4 4 0 0 1 0 6"/></svg>'
+    avisos: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4a1 1 0 0 0 1 1h2l8 4V5L7 9H5a1 1 0 0 0-1 1z"/><path d="M18.5 9a4 4 0 0 1 0 6"/></svg>',
+    ok: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
   };
 
   var state = {
@@ -34,7 +35,8 @@ window.startApp = function (D) {
     me: LS.getItem("aom-me") || "",
     tasks: [], momentos: D.momentos.slice(),
     modo: D.sync && D.sync.url ? "sync" : "local",
-    ultimaSync: null, erroSync: false
+    ultimaSync: null, erroSync: false,
+    salvos: {}, pend: {}, flashSalvo: 0
   };
 
   var byNome = {}, byRotulo = {};
@@ -176,10 +178,15 @@ window.startApp = function (D) {
   state.salvando = 0; state.mudancas = 0; state.versaoScript = null;
   var VERSAO_SCRIPT = 5;
   function enviar(corpo) {
-    state.salvando++; state.mudancas++;
-    var fim = function () { state.salvando--; if (!state.salvando) setTimeout(sincronizar, 400); };
-    return api("POST", corpo).then(function (r) { fim(); return r; }, function (e) { fim(); throw e; });
+    state.salvando++; state.mudancas++; renderConn();
+    var fim = function (ok) { state.salvando--; if (ok) marcarSalvo(); renderConn(); if (!state.salvando) setTimeout(sincronizar, 400); };
+    return api("POST", corpo).then(function (r) { fim(r && r.ok); return r; }, function (e) { fim(false); throw e; });
   }
+  function marcarSalvo() {
+    state.flashSalvo = Date.now();
+    setTimeout(renderConn, 4100);
+  }
+  function chaveTarefa(t) { return [t.status, t.resp.join(";"), t.res.join(";"), t.obs, t.titulo, t.desc, t.quando].join("|"); }
   function chaveCache() { return usaPin() ? "aom-cache-adm" : "aom-cache"; }
   function aplicarDados(r) {
     setCont(r.conteudo || {});
@@ -200,11 +207,19 @@ window.startApp = function (D) {
       if (!r || !r.ok) throw new Error("falha");
       state.versaoScript = r.versao || 0;
       if (state.salvando || marca !== state.mudancas) return;
+      var antes = null, chave = chaveCache();
+      if (state.dadosPlanilha && state.chaveDados === chave) {
+        antes = {}; state.tasks.forEach(function (t) { antes[t.id] = chaveTarefa(t); });
+      }
       aplicarDados(r);
+      if (antes) state.tasks.forEach(function (t) {
+        if (antes[t.id] !== chaveTarefa(t) && !state.pend[t.id]) state.salvos[t.id] = { em: Date.now(), por: t.por, meu: !!eu() && t.por === eu().rotulo };
+      });
+      state.dadosPlanilha = true; state.chaveDados = chave;
       try { SS.setItem(chaveCache(), JSON.stringify({ linhas: r.linhas, avisos: r.avisos || [], conteudo: r.conteudo || {} })); } catch (e) {}
       state.ultimaSync = new Date(); state.erroSync = false;
       if (!sheetAberto()) render(); else renderBanner();
-    }).catch(function () { state.erroSync = true; renderBanner(); })
+    }).catch(function () { state.erroSync = true; renderBanner(); renderConn(); })
       .then(function () { sincronizando = false; });
   }
 
@@ -230,15 +245,19 @@ window.startApp = function (D) {
     if (patch.desc !== undefined) corpo.desc = patch.desc;
     if (patch.quando !== undefined) corpo.quando = rotuloMomento(patch.quando);
     toast("Salvando...");
+    state.pend[t.id] = true; delete state.salvos[t.id];
     enviar(corpo).then(function (r) {
       if (!r || !r.ok) { var er = new Error(r && r.erro || "falha"); er.r = r; throw er; }
+      delete state.pend[t.id];
+      state.salvos[t.id] = { em: Date.now(), por: quem, meu: true };
       if (r.linha) {
         var novo = deLinhas([r.linha])[0], alvo = tarefaPorId(t.id) || t;
         if (novo) Object.keys(novo).forEach(function (k) { alvo[k] = novo[k]; });
-        if (!sheetAberto()) render();
       }
+      if (!sheetAberto()) render();
       toast("Salvo na planilha");
     }).catch(function (err) {
+      delete state.pend[t.id];
       var alvo = tarefaPorId(t.id) || t;
       Object.keys(antes).forEach(function (k) { alvo[k] = antes[k]; });
       render();
@@ -537,8 +556,18 @@ window.startApp = function (D) {
   }
 
   /* ---------- componentes ---------- */
+  var SALVO_MS = 5 * 60000;
+  function marcaSalvo(t) {
+    if (state.pend[t.id]) return h("span", { "class": "tag salvando", text: "Salvando..." });
+    var s = state.salvos[t.id];
+    if (!s || Date.now() - s.em > SALVO_MS) return null;
+    var quem = s.meu ? "" : (byRotulo[s.por] ? byRotulo[s.por].nome : s.por);
+    return h("span", { "class": "tag salvo", title: "Gravado na planilha" }, [icon("ok"), quem ? "Atualizado por " + quem : "Salvo"]);
+  }
   function linha(t) {
     var meta = h("span", { "class": "row-meta" });
+    var ms = marcaSalvo(t);
+    if (ms) meta.appendChild(ms);
     if (t.status === "Decidir") meta.appendChild(h("span", { "class": "tag dec", text: "Decidir" }));
     if (protegida(t)) meta.appendChild(h("span", { "class": "tag adm", text: t.adm ? "Só admins" : "Admins" }));
     if (t.resp.length) meta.appendChild(h("span", { "class": "who-txt", text: t.resp.join(", ") }));
@@ -1091,7 +1120,24 @@ window.startApp = function (D) {
     else b.appendChild(h("span", { "class": "who-n", text: state.me === "_" ? "Só leitura" : "Quem é você?" }));
     b.onclick = function () { abrirNome(); };
   }
+  function renderConn() {
+    var b = $("conn");
+    if (state.modo !== "sync") { b.hidden = true; return; }
+    var est, txt, info;
+    var hora = state.ultimaSync ? state.ultimaSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
+    if (state.salvando > 0) { est = "salvando"; txt = "Salvando"; info = "Salvando na planilha..."; }
+    else if (state.erroSync) { est = "erro"; txt = "Sem conexão"; info = "Sem conexão com a planilha. Toque para tentar de novo."; }
+    else if (!state.ultimaSync) { est = "conectando"; txt = "Conectando"; info = "Conectando à planilha..."; }
+    else if (Date.now() - state.flashSalvo < 4000) { est = "salvo"; txt = "Salvo"; info = "Salvo na planilha."; }
+    else { est = "ok"; txt = "Conectado"; info = "Planilha conectada. Atualizado às " + hora + "."; }
+    b.hidden = false; b.className = "conn " + est; b.title = info; b.setAttribute("aria-label", info);
+    b.textContent = "";
+    b.appendChild(est === "ok" || est === "salvo" ? icon("ok") : h("i", { "class": "dot" }));
+    b.appendChild(h("span", { "class": "conn-t", text: txt }));
+    b.onclick = function () { toast(info, est === "erro"); sincronizar(); };
+  }
   function renderBanner() {
+    renderConn();
     var b = $("banner"), msg = "";
     if (state.erroSync) msg = "Sem conexão com a planilha. Você está vendo a última versão carregada.";
     else if (state.modo === "sync" && state.versaoScript !== null && state.versaoScript < VERSAO_SCRIPT && nomeAdmin()) msg = "O script da planilha está desatualizado e os responsáveis não estão sendo gravados. Cole o script novo e atualize: Implantar > Gerenciar implantações > lápis > Versão: Nova versão > Implantar.";
@@ -1146,12 +1192,17 @@ window.startApp = function (D) {
   $("fab").onclick = abrirNova;
   try { carregarBase(); }
   catch (e) { try { LS.removeItem("aom-local"); } catch (x) {} carregarBase(); }
-  if (state.modo === "sync") state.temCache = carregarCache();
+  if (state.modo === "sync") { state.temCache = carregarCache(); if (state.temCache) { state.dadosPlanilha = true; state.chaveDados = chaveCache(); } }
   contagem(); setInterval(contagem, 60000);
   render();
   if (state.modo === "sync") {
     sincronizar();
     setInterval(sincronizar, 45000);
+    setInterval(function () {
+      var mudou = false, agora = Date.now();
+      Object.keys(state.salvos).forEach(function (id) { if (agora - state.salvos[id].em > SALVO_MS) { delete state.salvos[id]; mudou = true; } });
+      if (mudou && !sheetAberto()) render();
+    }, 20000);
     document.addEventListener("visibilitychange", function () { if (!document.hidden) sincronizar(); });
   }
   var hash = (location.hash || "").slice(1);
