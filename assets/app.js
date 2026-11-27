@@ -969,10 +969,10 @@ window.startApp = function (D) {
     var box = h("div", { "class": "figsel" });
     var chk = h("input", { type: "checkbox", id: "fig-on" });
     chk.checked = !!ini.fig;
-    var dica = h("p", { "class": "meta", text: "O mascote aparece no canto de baixo, à direita." });
+    var dica = h("p", { "class": "meta", text: "O Thom aparece no canto de baixo, à direita." });
     function marcar() { dica.hidden = !chk.checked; }
     chk.addEventListener("change", function () { marcar(); aoMudar(); });
-    box.appendChild(h("label", { "class": "chk", "for": "fig-on" }, [chk, h("span", { text: "Colocar a figurinha na imagem" })]));
+    box.appendChild(h("label", { "class": "chk", "for": "fig-on" }, [chk, h("span", { text: "Inserir o Thom no anúncio" })]));
     box.appendChild(dica);
     marcar();
     return { el: box, valor: function () { return chk.checked ? { fig: "1", figPos: "dir" } : { fig: "", figPos: "" }; } };
@@ -1129,7 +1129,7 @@ window.startApp = function (D) {
     });
     campos.push({ k: "r0", rot: "Regra: rótulo", valor: a.regra[0], max: 40 });
     campos.push({ k: "r1", rot: "Regra: texto", ta: true, rows: 3, valor: a.regra[1], max: 300 });
-    var cvG = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": "Prévia com a figurinha" });
+    var cvG = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": "Prévia do anúncio" });
     var sfG = seletorFig(a, function () { var f = sfG.valor(), p = JSON.parse(JSON.stringify(a)); p.fig = f.fig; p.figPos = f.figPos; window.AomAviso.desenhar(cvG, p).catch(function () {}); });
     var extra = h("div", null, [sfG.el, cvG]);
     window.AomAviso.desenhar(cvG, a).catch(function () {});
