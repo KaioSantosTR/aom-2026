@@ -793,12 +793,13 @@ window.startApp = function (D) {
       var msg = h("p", { "class": "meta", role: "status" });
       var pronto = window.AomAviso.desenhar(cv, a).catch(function () { msg.textContent = "Não consegui montar a imagem. Recarregue a página."; });
       function arquivo(fn) {
-        pronto.then(function () {
-          cv.toBlob(function (b) {
+        var hd = document.createElement("canvas");
+        window.AomAviso.desenhar(hd, a, 2).then(function () {
+          hd.toBlob(function (b) {
             if (!b) { msg.textContent = "Não consegui gerar a imagem."; return; }
             fn(new File([b], "aom-2026-" + a.id + ".png", { type: "image/png" }));
           }, "image/png");
-        });
+        }).catch(function () { msg.textContent = "Não consegui gerar a imagem."; });
       }
       function baixar(f) {
         var u = URL.createObjectURL(f), l = h("a", { href: u, download: f.name });

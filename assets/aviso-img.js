@@ -127,7 +127,15 @@ window.AomAviso = (function () {
     ctx.restore();
   }
 
-  function desenharGuia(canvas, a) {
+  function preparar(canvas, H, K) {
+    canvas.width = Math.round(S * K); canvas.height = Math.round(H * K);
+    var ctx = canvas.getContext("2d");
+    ctx.setTransform(K, 0, 0, K, 0, 0);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    return ctx;
+  }
+
+  function desenharGuia(canvas, a, K) {
     return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png"), figura(a)]).then(function (im) {
       var m = document.createElement("canvas").getContext("2d");
       m.font = "800 62px " + FONTE;
@@ -164,8 +172,7 @@ window.AomAviso = (function () {
           H = ry + R.h + RODAPE;
         }
       }
-      canvas.width = S; canvas.height = H;
-      var ctx = canvas.getContext("2d");
+      var ctx = preparar(canvas, H, K);
       fundo(ctx, H);
       ctx.globalAlpha = 0.14; ctx.drawImage(im[2], 560, -250, 760, 760); ctx.globalAlpha = 1;
       ctx.fillStyle = "#e0471a"; ctx.fillRect(0, 0, 22, H);
@@ -222,7 +229,7 @@ window.AomAviso = (function () {
     ctx.fillStyle = g; ctx.fillRect(0, 0, S, H);
   }
 
-  function desenharPadrao(canvas, a) {
+  function desenharPadrao(canvas, a, K) {
     return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png"), figura(a)]).then(function (im) {
       var m = document.createElement("canvas").getContext("2d");
       var FS = 34, LH = 48, PAD = 36, X = 78, W = 924;
@@ -278,8 +285,7 @@ window.AomAviso = (function () {
         H = Math.max(H, L.fim + RODAPE);
       }
 
-      canvas.width = S; canvas.height = H;
-      var ctx = canvas.getContext("2d");
+      var ctx = preparar(canvas, H, K);
       fundo(ctx, H);
       ctx.globalAlpha = 0.14; ctx.drawImage(im[2], 560, -250, 760, 760); ctx.globalAlpha = 1;
       ctx.fillStyle = "#e0471a"; ctx.fillRect(0, 0, 22, H);
@@ -331,7 +337,7 @@ window.AomAviso = (function () {
     });
   }
 
-  function desenhar(canvas, a) { a = preencher(a); return a.grupos ? desenharGuia(canvas, a) : desenharPadrao(canvas, a); }
+  function desenhar(canvas, a, escala) { a = preencher(a); var K = escala || 1; return a.grupos ? desenharGuia(canvas, a, K) : desenharPadrao(canvas, a, K); }
 
   function texto(a) {
     a = preencher(a);
