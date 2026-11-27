@@ -98,6 +98,20 @@ window.AomAviso = (function () {
   function escreverRico(ctx, linha, x, y, fn, fb) {
     linha.forEach(function (p) { ctx.font = p.b ? fb : fn; ctx.fillText(p.s, x, y); x += ctx.measureText(p.s).width; });
   }
+  var CX = { n: "400 30px " + FONTE, b: "700 30px " + FONTE, r: "800 30px " + FONTE, lh: 44, gap: 26 };
+  function caixa(m, texto, w) {
+    var ls = [], alt = 0;
+    String(texto || "").split("\n").forEach(function (par) {
+      if (!par.trim()) { if (ls.length && ls[ls.length - 1]) { ls.push(null); alt += CX.gap; } return; }
+      quebrarRico(m, par.trim(), w - 64, CX.n, CX.b).forEach(function (l) { ls.push(l); alt += CX.lh; });
+    });
+    while (ls.length && !ls[ls.length - 1]) { ls.pop(); alt -= CX.gap; }
+    return { ls: ls, alt: alt };
+  }
+  function escreverCaixa(ctx, ls, x, y) {
+    ctx.fillStyle = "#ffffff";
+    ls.forEach(function (l) { if (!l) { y += CX.gap; return; } y += CX.lh; escreverRico(ctx, l, x, y, CX.n, CX.b); });
+  }
 
   function retangulo(ctx, x, y, w, h, r) {
     ctx.beginPath();
@@ -150,15 +164,9 @@ window.AomAviso = (function () {
         altP = Math.max(altP, h);
       });
       var colFim = topo + altP, ry = colFim + 22;
-      var DN = "600 27px " + FONTE, DB = "800 27px " + FONTE;
       function regra(w) {
-        var ls = [], h = 58;
-        String(a.regra[1]).split("\n").forEach(function (par) {
-          if (!par.trim()) { if (ls.length && ls[ls.length - 1]) { ls.push(null); h += 14; } return; }
-          quebrarRico(m, par.trim(), w - 56, DN, DB).forEach(function (l) { ls.push(l); h += 34; });
-        });
-        while (ls.length && !ls[ls.length - 1]) { ls.pop(); h -= 14; }
-        return { w: w, ls: ls, h: Math.max(126, h) };
+        var c = caixa(m, a.regra[1], w);
+        return { w: w, ls: c.ls, h: Math.max(126, 50 + c.alt + 28) };
       }
       var H = S, R = regra(924), fz = FZ;
       if (!im[3]) H = Math.max(S, ry + R.h + RODAPE);
@@ -213,10 +221,8 @@ window.AomAviso = (function () {
 
       retangulo(ctx, 78, ry, R.w, R.h, 18); ctx.fillStyle = "rgba(224,71,26,0.18)"; ctx.fill();
       ctx.fillStyle = "#e0471a"; ctx.fillRect(78, ry + 14, 8, R.h - 28);
-      ctx.fillStyle = "#f0b23c"; ctx.font = "800 27px " + FONTE; ctx.fillText(a.regra[0], 110, ry + 40);
-      ctx.fillStyle = "#ffffff";
-      var ly = ry + 40;
-      R.ls.forEach(function (l) { if (!l) { ly += 14; return; } ly += 34; escreverRico(ctx, l, 110, ly, DN, DB); });
+      ctx.fillStyle = "#f0b23c"; ctx.font = CX.r; ctx.fillText(a.regra[0], 110, ry + 46);
+      escreverCaixa(ctx, R.ls, 110, ry + 52);
       rodape(ctx, im, H, fz);
       return canvas;
     });
@@ -249,7 +255,7 @@ window.AomAviso = (function () {
       });
       while (brutas.length && brutas[brutas.length - 1].t === "gap") brutas.pop();
 
-      var FN = "500 " + FS + "px " + FONTE, FB = "800 " + FS + "px " + FONTE, DN = "600 27px " + FONTE, DB = "800 27px " + FONTE;
+      var FN = "500 " + FS + "px " + FONTE, FB = "700 " + FS + "px " + FONTE;
       function cartao(w) {
         var h = 2 * PAD, ops = brutas.map(function (o) {
           if (o.t === "gap") { h += 20; return o; }
@@ -260,13 +266,8 @@ window.AomAviso = (function () {
         return { w: w, ops: ops, h: h };
       }
       function destaque(w) {
-        var dl = [], h = 28 + (a.dr ? 40 : 0) + 22;
-        String(a.dt).split("\n").forEach(function (par) {
-          if (!par.trim()) { if (dl.length && dl[dl.length - 1]) { dl.push(null); h += 14; } return; }
-          quebrarRico(m, par.trim(), w - 56, DN, DB).forEach(function (l) { dl.push(l); h += 34; });
-        });
-        while (dl.length && !dl[dl.length - 1]) { dl.pop(); h -= 14; }
-        return { w: w, dl: dl, h: h };
+        var c = caixa(m, a.dt, w);
+        return { w: w, dl: c.ls, h: (a.dr ? 52 : 16) + c.alt + 28 };
       }
       function montar(H) {
         var zona = im[3] ? H - FZ + ZONA : Infinity, C = null, D = null, fim = topo;
@@ -326,10 +327,8 @@ window.AomAviso = (function () {
         var D = L.D;
         retangulo(ctx, X, D.y, D.w, D.h, 18); ctx.fillStyle = "rgba(224,71,26,0.18)"; ctx.fill();
         ctx.fillStyle = "#e0471a"; ctx.fillRect(X, D.y + 14, 8, D.h - 28);
-        var dy = D.y + 22;
-        if (a.dr) { ctx.fillStyle = "#f0b23c"; ctx.font = "800 27px " + FONTE; dy += 22; ctx.fillText(a.dr, 110, dy); dy += 18; }
-        ctx.fillStyle = "#ffffff";
-        D.dl.forEach(function (l) { if (!l) { dy += 14; return; } dy += 34; escreverRico(ctx, l, 110, dy - (a.dr ? 0 : 6), DN, DB); });
+        if (a.dr) { ctx.fillStyle = "#f0b23c"; ctx.font = CX.r; ctx.fillText(a.dr, 110, D.y + 46); }
+        escreverCaixa(ctx, D.dl, 110, D.y + (a.dr ? 52 : 16));
       }
 
       rodape(ctx, im, H);
