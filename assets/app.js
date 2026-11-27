@@ -849,17 +849,17 @@ window.startApp = function (D) {
     var et = campo("Etiqueta (canto da imagem)", "a-et", novo ? "Aviso à equipe" : a.etiqueta, "Ex.: Aviso aos participantes");
     var ti = campo("Título", "a-ti", novo ? "" : a.titulo, "Ex.: Mudança de horário");
     var su = campo("Subtítulo (opcional)", "a-su", novo ? "AOM 2026 · 2 e 3 de dezembro · Campinas/SP" : a.sub, "");
-    var tx = campo("Mensagem", "a-tx", novo ? "" : a.texto, "Uma ideia por linha. Comece a linha com - para virar tópico. Linha em branco separa os blocos.", true);
+    var tx = campo("Mensagem", "a-tx", novo ? "" : a.texto, "Uma ideia por linha. Comece a linha com - para virar tópico. Linha em branco separa os blocos. *Entre asteriscos* fica em negrito.", true);
     corpo.appendChild(h("div", { "class": "aviso-ajuda" }, [
       h("button", { type: "button", "class": "chip", text: "+ Contagem regressiva", onclick: function () {
         var s = tx.selectionStart || tx.value.length, e = tx.selectionEnd || s;
         tx.value = tx.value.slice(0, s) + "{contagem}" + tx.value.slice(e);
         tx.focus(); tx.selectionStart = tx.selectionEnd = s + 10; previa();
       } }),
-      h("p", { "class": "meta", text: "{contagem} vira “" + window.AomAviso.preencher({ t: "{contagem}" }).t + "” e se atualiza sozinho (use {Contagem} no começo da frase). Emojis funcionam. Uma linha só com um link vai apenas no texto do WhatsApp, não na imagem." })
+      h("p", { "class": "meta", text: "{contagem} vira “" + window.AomAviso.preencher({ t: "{contagem}" }).t + "” e se atualiza sozinho (use {Contagem} no começo da frase). Escreva *assim* para negrito, na imagem e no WhatsApp. Emojis funcionam. Uma linha só com um link vai apenas no texto do WhatsApp, não na imagem." })
     ]));
     var dr = campo("Destaque: título (opcional)", "a-dr", novo ? "" : a.dr, "Ex.: Importante:");
-    var dt = campo("Destaque: texto (opcional)", "a-dt", novo ? "" : a.dt, "Aparece na caixa laranja no fim da imagem. Até 300 caracteres, pode quebrar linha.", true, 4, 300);
+    var dt = campo("Destaque: texto (opcional)", "a-dt", novo ? "" : a.dt, "Aparece na caixa laranja no fim da imagem. Pode quebrar linha e usar *negrito*.", true, 6, 800);
     corpo.appendChild(h("label", { "class": "lbl", text: "Prévia da imagem" }));
     var cv = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": "Prévia do aviso" });
     var sf = seletorFig(novo ? {} : a, function () { previa(); });
