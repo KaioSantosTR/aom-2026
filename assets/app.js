@@ -966,43 +966,16 @@ window.startApp = function (D) {
   }
 
   function seletorFig(ini, aoMudar) {
-    var FIGS = window.AomAviso.figuras;
-    var st = { fig: ini.fig ? String(ini.fig) : "", pos: ini.figPos || "dir", on: !!ini.fig };
     var box = h("div", { "class": "figsel" });
     var chk = h("input", { type: "checkbox", id: "fig-on" });
-    chk.checked = st.on;
-    var corpo = h("div", { "class": "figsel-corpo" });
-    var grade = h("div", { "class": "figgrid", role: "listbox", "aria-label": "Figurinhas" });
-    var botoes = [];
-    FIGS.forEach(function (nome, i) {
-      var n = String(i + 1);
-      var b = h("button", { type: "button", "class": "figbtn", title: nome, "aria-label": nome, onclick: function () { st.fig = n; marcar(); aoMudar(); } },
-        [h("img", { src: window.AomAviso.figSrc(n), alt: "", loading: "lazy", width: "64", height: "64" })]);
-      b.dataset.n = n; botoes.push(b); grade.appendChild(b);
-    });
-    var pos = h("div", { "class": "seg figpos" });
-    [["esq", "Esquerda"], ["centro", "Centro"], ["dir", "Direita"]].forEach(function (p) {
-      var b = h("button", { type: "button", "class": "seg-b", text: p[1], onclick: function () { st.pos = p[0]; marcar(); aoMudar(); } });
-      b.dataset.p = p[0]; pos.appendChild(b);
-    });
-    function marcar() {
-      corpo.hidden = !st.on;
-      botoes.forEach(function (b) { var on = b.dataset.n === st.fig; b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false"); });
-      [].forEach.call(pos.children, function (b) { b.classList.toggle("on", b.dataset.p === st.pos); });
-    }
-    chk.addEventListener("change", function () {
-      st.on = chk.checked;
-      if (st.on && !st.fig) st.fig = "1";
-      marcar(); aoMudar();
-    });
-    box.appendChild(h("label", { "class": "chk", "for": "fig-on" }, [chk, h("span", { text: "Colocar uma figurinha na imagem" })]));
-    corpo.appendChild(grade);
-    corpo.appendChild(h("label", { "class": "lbl", text: "Posição" }));
-    corpo.appendChild(pos);
-    corpo.appendChild(h("p", { "class": "meta", text: "A figurinha entra no espaço livre embaixo do texto." }));
-    box.appendChild(corpo);
+    chk.checked = !!ini.fig;
+    var dica = h("p", { "class": "meta", text: "O mascote aparece no canto de baixo, à direita." });
+    function marcar() { dica.hidden = !chk.checked; }
+    chk.addEventListener("change", function () { marcar(); aoMudar(); });
+    box.appendChild(h("label", { "class": "chk", "for": "fig-on" }, [chk, h("span", { text: "Colocar a figurinha na imagem" })]));
+    box.appendChild(dica);
     marcar();
-    return { el: box, valor: function () { return st.on && st.fig ? { fig: st.fig, figPos: st.pos } : { fig: "", figPos: "" }; } };
+    return { el: box, valor: function () { return chk.checked ? { fig: "1", figPos: "dir" } : { fig: "", figPos: "" }; } };
   }
 
   function abrirEditor(o) {

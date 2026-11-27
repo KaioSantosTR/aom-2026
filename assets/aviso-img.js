@@ -4,24 +4,12 @@ window.AomAviso = (function () {
   var FONTE = '"Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"';
   var cache = {};
   var cfg = { inicio: "" };
-  var FIGS = ["Que isso?!", "Boa!", "Merecido!", "Enfim, a hipocrisia", "Não é possível!", "Mandou bem!", "Meta batida!", "Save the date", "Cadê dezembro?", "Está chegando!",
-    "Eu não vejo a hora!", "Já pode ser dia 02?", "É hoje!", "Tudo normal!", "Sei não, hein...", "Como assim?!", "Stonks!", "Eu não tenho estrutura!", "Eu avisei!", "Expectativa x realidade",
-    "Calma lá!", "Deu bom, time!", "Segue o plano.", "Cadê?", "Eu quero é prêmio!", "Olha isso...", "Tá tudo sob controle!", "Ah, pronto!", "Me explica isso!", "Não acredito!",
-    "É sobre isso!", "Pode isso, produção?", "Socorro!", "Hum... interessante.", "Vou ficar quieto.", "Por favor...", "Sei não...", "Deu ruim...", "Meme do incêndio", "Meme do incêndio 2"];
-  function figSrc(n) { return "assets/fig/" + n + ".webp"; }
+  var FIG = "assets/img/mascote.webp", FZ = 600, FIG_LIVRE = 450;
   function figura(a) {
-    var n = parseInt(a && a.fig, 10);
-    if (!(n >= 1 && n <= FIGS.length)) return Promise.resolve(null);
-    return img(figSrc(n)).catch(function () { return null; });
+    if (!(a && a.fig)) return Promise.resolve(null);
+    return img(FIG).catch(function () { return null; });
   }
-  function colar(ctx, im, a, y, z) {
-    var x = a.figPos === "centro" ? (S - z) / 2 : a.figPos === "esq" ? 78 : 1002 - z;
-    ctx.save();
-    ctx.translate(x + z / 2, y + z / 2); ctx.rotate(a.figPos === "esq" ? 0.06 : -0.06);
-    ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 10;
-    ctx.drawImage(im, -z / 2, -z / 2, z, z);
-    ctx.restore();
-  }
+  function colar(ctx, im, H) { ctx.drawImage(im, S - FZ, H - FZ, FZ, FZ); }
   var SO_LINK = /^\s*https?:\/\/\S+\s*$/i;
 
   function contagem() {
@@ -110,7 +98,7 @@ window.AomAviso = (function () {
   function desenharGuia(canvas, a) {
     return Promise.all([img("assets/img/aom-logo.png"), img("assets/img/tr-logo.png"), img("assets/img/mandala.png"), figura(a)]).then(function (im) {
       var H = S;
-      if (im[3]) { var fimP = alturaGuia(a); if (S - 84 - fimP < 260) H = fimP + 300 + 40 + 84; }
+      if (im[3]) H = Math.max(S, alturaGuia(a) + FIG_LIVRE);
       canvas.width = S; canvas.height = H;
       var ctx = canvas.getContext("2d");
       ctx.fillStyle = "#04172b"; ctx.fillRect(0, 0, S, H);
@@ -172,13 +160,9 @@ window.AomAviso = (function () {
       var ly = ry + 40;
       quebrar(ctx, a.regra[1], 868).forEach(function (l) { ly += 34; ctx.fillText(l, 110, ly); });
       canvas.dataset.fim = String(ry + rh);
-      if (im[3]) {
-        var livre = H - 84 - (ry + rh), fz = Math.min(300, livre - 20);
-        if (fz >= 130) colar(ctx, im[3], a, ry + rh + (livre - fz) / 2 + 4, fz);
-      }
-
       ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE; ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
-      var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36);
+      if (im[3]) colar(ctx, im[3], H);
+      else { var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36); }
       return canvas;
     });
   }
@@ -224,12 +208,7 @@ window.AomAviso = (function () {
         ry = fim + (ops.length ? 26 : 0);
         fim = ry + rh;
       }
-      var H = Math.max(S, fim + 130), fz = 0, fy = 0;
-      if (im[3]) {
-        fz = 300;
-        if (H - 84 - fim < fz + 40) H = fim + fz + 40 + 84;
-        fy = fim + (H - 84 - fim - fz) / 2 + 4;
-      }
+      var H = Math.max(S, fim + (im[3] ? FIG_LIVRE : 130));
 
       canvas.width = S; canvas.height = H;
       var ctx = canvas.getContext("2d");
@@ -278,9 +257,9 @@ window.AomAviso = (function () {
         dl.forEach(function (l) { dy += 34; ctx.fillText(l, 110, dy - (a.dr ? 0 : 6)); });
       }
 
-      if (im[3]) colar(ctx, im[3], a, fy, fz);
       ctx.fillStyle = "#9db0c7"; ctx.font = "500 22px " + FONTE; ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
-      var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36);
+      if (im[3]) colar(ctx, im[3], H);
+      else { var tw = im[1].width * 36 / im[1].height; ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36); }
       return canvas;
     });
   }
@@ -304,5 +283,5 @@ window.AomAviso = (function () {
     return t + "\n*" + a.regra[0] + "* " + a.regra[1];
   }
 
-  return { desenhar: desenhar, texto: texto, preencher: preencher, tamanho: S, figuras: FIGS, figSrc: figSrc, config: function (o) { Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); } };
+  return { desenhar: desenhar, texto: texto, preencher: preencher, tamanho: S, config: function (o) { Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); } };
 })();
