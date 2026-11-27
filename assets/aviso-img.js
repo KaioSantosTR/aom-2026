@@ -142,13 +142,19 @@ window.AomAviso = (function () {
         altP = Math.max(altP, h);
       });
       var colFim = topo + altP, ry = colFim + 22;
+      var DN = "600 27px " + FONTE, DB = "800 27px " + FONTE;
       function regra(w) {
-        m.font = "600 27px " + FONTE;
-        var ls = quebrar(m, a.regra[1], w - 56);
-        return { w: w, ls: ls, h: Math.max(126, 58 + ls.length * 34) };
+        var ls = [], h = 58;
+        String(a.regra[1]).split("\n").forEach(function (par) {
+          if (!par.trim()) { if (ls.length && ls[ls.length - 1]) { ls.push(null); h += 14; } return; }
+          quebrarRico(m, par.trim(), w - 56, DN, DB).forEach(function (l) { ls.push(l); h += 34; });
+        });
+        while (ls.length && !ls[ls.length - 1]) { ls.pop(); h -= 14; }
+        return { w: w, ls: ls, h: Math.max(126, h) };
       }
       var H = S, R = regra(924), fz = FZ;
-      if (im[3]) {
+      if (!im[3]) H = Math.max(S, ry + R.h + RODAPE);
+      else {
         if (H - colFim + 46 < FZ_MIN) H = colFim + FZ_MIN - 46;
         for (var k = 0; k < 4; k++) {
           fz = Math.min(FZ, H - colFim + 46);
@@ -201,9 +207,9 @@ window.AomAviso = (function () {
       retangulo(ctx, 78, ry, R.w, R.h, 18); ctx.fillStyle = "rgba(224,71,26,0.18)"; ctx.fill();
       ctx.fillStyle = "#e0471a"; ctx.fillRect(78, ry + 14, 8, R.h - 28);
       ctx.fillStyle = "#f0b23c"; ctx.font = "800 27px " + FONTE; ctx.fillText(a.regra[0], 110, ry + 40);
-      ctx.fillStyle = "#ffffff"; ctx.font = "600 27px " + FONTE;
+      ctx.fillStyle = "#ffffff";
       var ly = ry + 40;
-      R.ls.forEach(function (l) { ly += 34; ctx.fillText(l, 110, ly); });
+      R.ls.forEach(function (l) { if (!l) { ly += 14; return; } ly += 34; escreverRico(ctx, l, 110, ly, DN, DB); });
       rodape(ctx, im, H, fz);
       return canvas;
     });
@@ -339,9 +345,9 @@ window.AomAviso = (function () {
     var t = "*" + String(a.titulo).replace(/\n/g, " ") + "*\n" + a.sub + "\n";
     a.grupos.forEach(function (gr) {
       t += "\n*" + gr.nome.toUpperCase() + "* (" + gr.legenda.toLowerCase() + ")\n";
-      gr.itens.forEach(function (it) { t += "- " + it[0] + ": " + it[1] + "\n"; });
+      gr.itens.forEach(function (it) { t += "- " + it[0] + (it[1] ? ": " + it[1] : "") + "\n"; });
     });
-    return t + "\n*" + a.regra[0] + "* " + a.regra[1];
+    return t + "\n*" + a.regra[0] + "*" + (/\n/.test(a.regra[1]) ? "\n" : " ") + a.regra[1];
   }
 
   return { desenhar: desenhar, texto: texto, preencher: preencher, tamanho: S, config: function (o) { Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); } };

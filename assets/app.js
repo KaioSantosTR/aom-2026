@@ -1127,8 +1127,8 @@ window.startApp = function (D) {
       campos.push({ k: "gl" + i, rot: "Bloco " + (i + 1) + ": legenda", valor: g.legenda, max: 60 });
       campos.push({ k: "gi" + i, rot: "Bloco " + (i + 1) + ": itens", ta: true, rows: 4, valor: g.itens.map(function (it) { return it[0] + " | " + it[1]; }).join("\n"), dica: "Uma linha por item: quando | o que usar" });
     });
-    campos.push({ k: "r0", rot: "Regra: rótulo", valor: a.regra[0], max: 40 });
-    campos.push({ k: "r1", rot: "Regra: texto", ta: true, rows: 3, valor: a.regra[1], max: 300 });
+    campos.push({ k: "r0", rot: "Caixa laranja: título", valor: a.regra[0], max: 60 });
+    campos.push({ k: "r1", rot: "Caixa laranja: texto", ta: true, rows: 8, valor: a.regra[1], max: 1200, dica: "Pode quebrar linha, deixar linha em branco entre os itens e usar *negrito*." });
     var cvG = h("canvas", { "class": "aviso-cv", role: "img", "aria-label": "Prévia do anúncio" });
     var sfG = seletorFig(a, function () { var f = sfG.valor(), p = JSON.parse(JSON.stringify(a)); p.fig = f.fig; p.figPos = f.figPos; window.AomAviso.desenhar(cvG, p).catch(function () {}); });
     var extra = h("div", null, [sfG.el, cvG]);
