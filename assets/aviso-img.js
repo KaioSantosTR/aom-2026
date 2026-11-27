@@ -1,8 +1,28 @@
 window.AomAviso = (function () {
   var S = 1080;
   var COR = { gold: "#f0b23c", orange: "#e0471a" };
-  var FONTE = '"Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif';
+  var FONTE = '"Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"';
   var cache = {};
+  var cfg = { inicio: "" };
+  var SO_LINK = /^\s*https?:\/\/\S+\s*$/i;
+
+  function contagem() {
+    var diff = new Date(cfg.inicio).getTime() - Date.now();
+    if (!cfg.inicio || isNaN(diff)) return "";
+    if (diff <= 0) return "é hoje";
+    var d = Math.floor(diff / 864e5), hh = Math.floor(diff % 864e5 / 36e5);
+    var pd = d + (d === 1 ? " dia" : " dias"), ph = hh + (hh === 1 ? " hora" : " horas");
+    if (!d) return (hh <= 1 ? "falta " : "faltam ") + (hh ? ph : "menos de 1 hora");
+    return (d === 1 ? "falta " : "faltam ") + pd + (hh ? " e " + ph : "");
+  }
+  function preencher(a) {
+    var c = contagem(), C = c ? c.charAt(0).toUpperCase() + c.slice(1) : "";
+    var o = {};
+    Object.keys(a).forEach(function (k) {
+      o[k] = typeof a[k] === "string" ? a[k].replace(/\{contagem\}/g, c).replace(/\{Contagem\}/g, C) : a[k];
+    });
+    return o;
+  }
 
   function img(src) {
     if (cache[src]) return cache[src];
@@ -146,6 +166,7 @@ window.AomAviso = (function () {
       String(a.texto || "").split("\n").forEach(function (raw) {
         var l = raw.replace(/\s+$/, "");
         if (!l.trim()) { if (ops.length && ops[ops.length - 1].t !== "gap") ops.push({ t: "gap" }); return; }
+        if (SO_LINK.test(l)) return;
         var b = /^\s*[-\u2022]\s+(.*)$/.exec(l);
         if (b) ops.push({ t: "b", linhas: quebrar(m, b[1], W - 2 * PAD - 38) });
         else ops.push({ t: "p", linhas: quebrar(m, l.trim(), W - 2 * PAD) });
@@ -219,9 +240,10 @@ window.AomAviso = (function () {
     });
   }
 
-  function desenhar(canvas, a) { return a.grupos ? desenharGuia(canvas, a) : desenharPadrao(canvas, a); }
+  function desenhar(canvas, a) { a = preencher(a); return a.grupos ? desenharGuia(canvas, a) : desenharPadrao(canvas, a); }
 
   function texto(a) {
+    a = preencher(a);
     if (!a.grupos) {
       var u = "*" + String(a.titulo).replace(/\n/g, " ") + "*";
       if (a.sub) u += "\n" + a.sub;
@@ -237,5 +259,5 @@ window.AomAviso = (function () {
     return t + "\n*" + a.regra[0] + "* " + a.regra[1];
   }
 
-  return { desenhar: desenhar, texto: texto, tamanho: S };
+  return { desenhar: desenhar, texto: texto, preencher: preencher, tamanho: S, config: function (o) { Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); } };
 })();

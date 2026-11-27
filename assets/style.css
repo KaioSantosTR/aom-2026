@@ -270,3 +270,7 @@ textarea{resize:vertical}
 .tag.salvando{background:rgba(240,178,60,.16);color:var(--gold);animation:pulsa 1.2s ease-in-out infinite}
 @media (max-width:380px){.top-right{gap:8px}}
 @media (max-width:420px){.countdown span{display:none}.top-right{gap:8px}.top-row{gap:6px}}
+
+.aviso-ajuda{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:8px}
+.aviso-ajuda .meta{margin:0;font-size:.8rem}
+@media (max-width:599px){.acoes{display:grid;grid-template-columns:1fr 1fr}.acoes .btn:first-child{grid-column:1/-1}.acoes .btn{padding-left:8px;padding-right:8px}}

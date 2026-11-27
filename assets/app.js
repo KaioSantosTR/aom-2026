@@ -799,11 +799,14 @@ window.startApp = function (D) {
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { toast("Texto copiado"); }, function () { toast("Não consegui copiar.", true); });
         else toast("Seu navegador não permite copiar daqui.", true);
       } });
-      var botoes = [enviar, baixa, copia];
+      var zap = h("button", { type: "button", "class": "btn ghost", text: "Abrir no WhatsApp", onclick: function () {
+        window.open("https://wa.me/?text=" + encodeURIComponent(window.AomAviso.texto(a)), "_blank", "noopener");
+      } });
+      var botoes = [enviar, baixa, copia, zap];
       if (nomeAdmin()) botoes.push(h("button", { type: "button", "class": "btn ghost", text: "Editar", onclick: function () {
         comAdmin(function () { if (a.grupos) abrirGuia(a); else abrirAviso(a); });
       } }));
-      w.appendChild(cartao(a.titulo.replace(/\n/g, " "), a.custom ? (a.por ? "Editado por " + a.por + (a.em ? ", " + a.em : "") : "Imagem pronta para o WhatsApp.") : "Imagem 1080 x 1080 pronta para o WhatsApp.", [cv, h("div", { "class": "acoes" }, botoes), msg]));
+      w.appendChild(cartao(window.AomAviso.preencher({ t: a.titulo }).t.replace(/\n/g, " "), a.custom ? (a.por ? "Editado por " + a.por + (a.em ? ", " + a.em : "") : "Imagem pronta para o WhatsApp.") : "Imagem 1080 x 1080 pronta para o WhatsApp.", [cv, h("div", { "class": "acoes" }, botoes), msg]));
     });
     if (!lista.length) w.appendChild(h("p", { "class": "empty pad", text: "Nenhum aviso por enquanto." }));
     else {
@@ -828,6 +831,14 @@ window.startApp = function (D) {
     var ti = campo("Título", "a-ti", novo ? "" : a.titulo, "Ex.: Mudança de horário");
     var su = campo("Subtítulo (opcional)", "a-su", novo ? "AOM 2026 · 2 e 3 de dezembro · Campinas/SP" : a.sub, "");
     var tx = campo("Mensagem", "a-tx", novo ? "" : a.texto, "Uma ideia por linha. Comece a linha com - para virar tópico. Linha em branco separa os blocos.", true);
+    corpo.appendChild(h("div", { "class": "aviso-ajuda" }, [
+      h("button", { type: "button", "class": "chip", text: "+ Contagem regressiva", onclick: function () {
+        var s = tx.selectionStart || tx.value.length, e = tx.selectionEnd || s;
+        tx.value = tx.value.slice(0, s) + "{contagem}" + tx.value.slice(e);
+        tx.focus(); tx.selectionStart = tx.selectionEnd = s + 10; previa();
+      } }),
+      h("p", { "class": "meta", text: "{contagem} vira “" + window.AomAviso.preencher({ t: "{contagem}" }).t + "” e se atualiza sozinho (use {Contagem} no começo da frase). Emojis funcionam. Uma linha só com um link vai apenas no texto do WhatsApp, não na imagem." })
+    ]));
     var dr = campo("Destaque: título (opcional)", "a-dr", novo ? "" : a.dr, "Ex.: Importante:");
     var dt = campo("Destaque: texto (opcional)", "a-dt", novo ? "" : a.dt, "Aparece na caixa laranja no fim da imagem");
     corpo.appendChild(h("label", { "class": "lbl", text: "Prévia da imagem" }));
@@ -1102,6 +1113,7 @@ window.startApp = function (D) {
   }
 
   var TELAS = { inicio: telaInicio, tarefas: telaTarefas, equipe: telaEquipe, avisos: telaAvisos, cron: telaCron };
+  window.AomAviso.config({ inicio: D.evento.inicio });
   var NAV = [["inicio", "Início"], ["tarefas", "Tarefas"], ["equipe", "Equipe"], ["avisos", "Avisos"], ["cron", "Cronograma"]];
 
   function renderNav() {
