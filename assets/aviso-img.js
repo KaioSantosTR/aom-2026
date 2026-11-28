@@ -4,10 +4,18 @@ window.AomAviso = (function () {
   var FONTE = '"Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"';
   var cache = {};
   var cfg = { inicio: "" };
-  var FIG = "assets/img/mascote.webp", FZ = 600, FZ_MIN = 460, ZONA = 10, LN = 684, RODAPE = 110;
+  var FIGS = { "1": { src: "assets/img/mascote.webp", peek: true }, "2": { src: "assets/img/thom-2.webp" }, "3": { src: "assets/img/thom-3.webp" }, "4": { src: "assets/img/thom-4.webp" }, "5": { src: "assets/img/thom-5.webp" }, "6": { src: "assets/img/thom-6.webp" } };
+  var FZ = 600, FZ_MIN = 460, ZONA = 10, LN = 684, RODAPE = 110;
   function figura(a) {
     if (!(a && a.fig)) return Promise.resolve(null);
-    return img(FIG).catch(function () { return null; });
+    var f = FIGS[a.fig] || FIGS["1"];
+    return img(f.src).then(function (i) { return { im: i, peek: !!f.peek }; }).catch(function () { return null; });
+  }
+  function sobra(f) { return f.peek ? 46 : -12; }
+  function geo(f, fz, H) {
+    if (f.peek) return { x: S - fz, y: H - fz, w: fz, h: fz, topo: H - fz + ZONA, ln: LN };
+    var k = Math.min(fz * 0.97 / f.im.height, fz * 0.55 / f.im.width), w = f.im.width * k, h = f.im.height * k, x = S - 30 - w;
+    return { x: x, y: H - h, w: w, h: h, topo: H - h + ZONA, ln: Math.min(LN, Math.floor(x - 106)) };
   }
   function rodape(ctx, im, H, fz) {
     fz = fz || FZ;
@@ -16,7 +24,8 @@ window.AomAviso = (function () {
     if (im[3]) {
       ctx.drawImage(im[1], 78, H - 60, tw, 36);
       ctx.fillText("|  AOM 2026  |  Campinas/SP", 78 + tw + 18, H - 34);
-      ctx.drawImage(im[3], S - fz, H - fz, fz, fz);
+      var g = geo(im[3], fz, H);
+      ctx.drawImage(im[3].im, g.x, g.y, g.w, g.h);
     } else {
       ctx.fillText("AOM 2026  |  Campinas/SP", 78, H - 34);
       ctx.drawImage(im[1], 1002 - tw, H - 60, tw, 36);
@@ -32,6 +41,15 @@ window.AomAviso = (function () {
     var pd = d + (d === 1 ? " dia" : " dias"), ph = hh + (hh === 1 ? " hora" : " horas");
     if (!d) return (hh <= 1 ? "falta " : "faltam ") + (hh ? ph : "menos de 1 hora");
     return (d === 1 ? "falta " : "faltam ") + pd + (hh ? " e " + ph : "");
+  }
+  function relogio() {
+    var diff = new Date(cfg.inicio).getTime() - Date.now();
+    if (!cfg.inicio || isNaN(diff)) return null;
+    if (diff <= 0) return [];
+    var d = Math.floor(diff / 864e5), hh = Math.floor(diff % 864e5 / 36e5), mm = Math.floor(diff % 36e5 / 6e4);
+    function dois(n) { return n < 10 ? "0" + n : String(n); }
+    if (d) return [[dois(d), d === 1 ? "DIA" : "DIAS"], [dois(hh), hh === 1 ? "HORA" : "HORAS"]];
+    return [[dois(hh), hh === 1 ? "HORA" : "HORAS"], [dois(mm), mm === 1 ? "MINUTO" : "MINUTOS"]];
   }
   function preencher(a) {
     var c = contagem(), C = c ? c.charAt(0).toUpperCase() + c.slice(1) : "";
@@ -171,11 +189,13 @@ window.AomAviso = (function () {
       var H = S, R = regra(924), fz = FZ;
       if (!im[3]) H = Math.max(S, ry + R.h + RODAPE);
       else {
-        if (H - colFim + 46 < FZ_MIN) H = colFim + FZ_MIN - 46;
+        var so = sobra(im[3]);
+        if (H - colFim + so < FZ_MIN) H = colFim + FZ_MIN - so;
         for (var k = 0; k < 4; k++) {
-          fz = Math.min(FZ, H - colFim + 46);
+          fz = Math.min(FZ, H - colFim + so);
+          var g = geo(im[3], fz, H);
           R = regra(924);
-          if (ry + R.h > H - fz + ZONA) R = regra(LN);
+          if (ry + R.h > g.topo) R = regra(g.ln);
           if (ry + R.h + RODAPE <= H) break;
           H = ry + R.h + RODAPE;
         }
@@ -269,21 +289,33 @@ window.AomAviso = (function () {
         var c = caixa(m, a.dt, w);
         return { w: w, dl: c.ls, h: (a.dr ? 52 : 16) + c.alt + 28 };
       }
-      function montar(H) {
-        var zona = im[3] ? H - FZ + ZONA : Infinity, C = null, D = null, fim = topo;
-        if (brutas.length) { C = cartao(W); if (topo + C.h > zona) C = cartao(LN); fim = topo + C.h; }
-        if (a.dt) {
-          var ry = fim + (C ? 26 : 0);
-          D = destaque(W); if (ry + D.h > zona) D = destaque(LN);
-          D.y = ry; fim = ry + D.h;
-        }
-        return { C: C, D: D, fim: fim };
+      var pecas = a.tipo === "contagem" ? relogio() : null;
+      function bloco(w) {
+        m.font = "500 28px " + FONTE;
+        var leg = pecas && pecas.length && a.legenda ? quebrar(m, a.legenda, w - 40) : [];
+        return { w: w, leg: leg, h: 232 + (leg.length ? 22 + leg.length * 38 : 0) };
       }
-      var H = S, L = montar(H);
-      if (!im[3]) H = Math.max(S, L.fim + 130);
+      var blocos = [];
+      if (pecas) blocos.push({ k: "R", f: bloco, gap: 0 });
+      if (brutas.length) blocos.push({ k: "C", f: cartao, gap: pecas ? 30 : 0 });
+      if (a.dt) blocos.push({ k: "D", f: destaque, gap: blocos.length ? 26 : 0 });
+      function montar(n, ln) {
+        var L = { fim: topo, cheio: topo };
+        blocos.forEach(function (b, i) {
+          var o = b.f(i >= blocos.length - n ? ln : W);
+          o.y = L.fim + b.gap; L[b.k] = o; L.fim = o.y + o.h;
+          if (i < blocos.length - n) L.cheio = L.fim;
+        });
+        return L;
+      }
+      var H, L;
+      if (!im[3]) { L = montar(0, W); H = Math.max(S, L.fim + 130); }
       else {
-        for (var k = 0; k < 4 && L.fim + RODAPE > H; k++) { H = L.fim + RODAPE; L = montar(H); }
-        H = Math.max(H, L.fim + RODAPE);
+        var g0 = geo(im[3], FZ, S);
+        for (var n = 0; n <= blocos.length; n++) {
+          var Ln = montar(n, g0.ln), Hn = Math.max(S, Ln.fim + RODAPE, Ln.cheio + g0.h - ZONA);
+          if (!L || Hn < H) { H = Hn; L = Ln; }
+        }
       }
 
       var ctx = preparar(canvas, H, K);
@@ -304,10 +336,34 @@ window.AomAviso = (function () {
       tit.forEach(function (l) { ctx.fillText(l, X, ty); ty += 72; });
       if (a.sub) { ctx.fillStyle = "#f0b23c"; ctx.font = "600 27px " + FONTE; ctx.fillText(a.sub, X, ty - 20); }
 
+      if (L.R) {
+        var R = L.R, n = Math.max(1, pecas.length), gp = 22, tw = (R.w - gp * (n - 1)) / n;
+        ctx.textAlign = "center";
+        for (var i = 0; i < n; i++) {
+          var tx = X + i * (tw + gp);
+          retangulo(ctx, tx, R.y, tw, 232, 26); ctx.fillStyle = "#0a2440"; ctx.fill();
+          ctx.strokeStyle = "rgba(240,178,60,0.55)"; ctx.lineWidth = 2.5; ctx.stroke();
+          ctx.save(); retangulo(ctx, tx, R.y, tw, 232, 26); ctx.clip();
+          ctx.fillStyle = i ? "#e0471a" : "#f0b23c"; ctx.fillRect(tx, R.y, tw, 10);
+          ctx.restore();
+          if (pecas.length) {
+            ctx.fillStyle = "#ffffff"; ctx.font = "800 150px " + FONTE; ctx.fillText(pecas[i][0], tx + tw / 2, R.y + 164);
+            ctx.fillStyle = "#f0b23c"; ctx.font = "800 30px " + FONTE; ctx.fillText(pecas[i][1].split("").join("\u2009"), tx + tw / 2, R.y + 208);
+          } else {
+            ctx.fillStyle = "#f0b23c"; ctx.font = "800 120px " + FONTE; ctx.fillText("É HOJE!", tx + tw / 2, R.y + 150);
+            ctx.fillStyle = "#ffffff"; ctx.font = "700 30px " + FONTE; ctx.fillText("Bem-vindos ao AOM 2026", tx + tw / 2, R.y + 200);
+          }
+        }
+        ctx.fillStyle = "#dbe5f1"; ctx.font = "500 28px " + FONTE;
+        R.leg.forEach(function (l, j) { ctx.fillText(l, X + R.w / 2, R.y + 232 + 50 + j * 38); });
+        ctx.textAlign = "left";
+      }
+
       if (L.C) {
-        retangulo(ctx, X, topo, L.C.w, L.C.h, 22); ctx.fillStyle = "#0a2440"; ctx.fill();
+        var topoC = L.C.y;
+        retangulo(ctx, X, topoC, L.C.w, L.C.h, 22); ctx.fillStyle = "#0a2440"; ctx.fill();
         ctx.strokeStyle = "#1b3b5f"; ctx.lineWidth = 2; ctx.stroke();
-        var cy = topo + PAD;
+        var cy = topoC + PAD;
         ctx.font = "500 " + FS + "px " + FONTE;
         L.C.ops.forEach(function (o) {
           if (o.t === "gap") { cy += 20; return; }
@@ -343,6 +399,11 @@ window.AomAviso = (function () {
     if (!a.grupos) {
       var u = "*" + String(a.titulo).replace(/\n/g, " ") + "*";
       if (a.sub) u += "\n" + a.sub;
+      if (a.tipo === "contagem") {
+        var c = contagem();
+        if (c === "é hoje") u += "\n\n🎉 *É hoje!* Bem-vindos ao AOM 2026!";
+        else if (c) u += "\n\n⏳ *" + c.charAt(0).toUpperCase() + c.slice(1) + "*" + (a.legenda ? " " + a.legenda : "") + "!";
+      }
       if (a.texto) u += "\n\n" + String(a.texto).replace(/^\s*\u2022\s+/gm, "- ").trim();
       if (a.dt) u += "\n\n" + (a.dr ? "*" + a.dr + "*" + (/\n/.test(a.dt) ? "\n" : " ") : "") + a.dt;
       return u;

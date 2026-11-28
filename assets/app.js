@@ -826,7 +826,7 @@ window.startApp = function (D) {
       if (nomeAdmin()) botoes.push(h("button", { type: "button", "class": "btn ghost", text: "Editar", onclick: function () {
         comAdmin(function () { if (a.grupos) abrirGuia(a); else abrirAviso(a); });
       } }));
-      w.appendChild(cartao(window.AomAviso.preencher({ t: a.titulo }).t.replace(/\n/g, " "), a.custom ? (a.por ? "Editado por " + a.por + (a.em ? ", " + a.em : "") : "Imagem pronta para o WhatsApp.") : "Imagem 1080 x 1080 pronta para o WhatsApp.", [cv, h("div", { "class": "acoes" }, botoes), msg]));
+      w.appendChild(cartao(window.AomAviso.preencher({ t: a.titulo }).t.replace(/\n/g, " "), a.custom ? (a.por ? "Editado por " + a.por + (a.em ? ", " + a.em : "") : "Imagem pronta para o WhatsApp.") : a.tipo === "contagem" ? "O relógio se atualiza sozinho toda vez que a imagem é gerada." : "Imagem 1080 x 1080 pronta para o WhatsApp.", [cv, h("div", { "class": "acoes" }, botoes), msg]));
     });
     if (!lista.length) w.appendChild(h("p", { "class": "empty pad", text: "Nenhum aviso por enquanto." }));
     else {
@@ -834,12 +834,12 @@ window.startApp = function (D) {
       ["No celular: toque em Compartilhar imagem e escolha o WhatsApp.", "No computador: baixe a imagem e arraste para a conversa.", "Copiar texto leva a mesma mensagem, para colar junto com a imagem."].forEach(function (x) { ul.appendChild(h("li", { text: x })); });
       w.appendChild(cartao("Como enviar", null, [ul]));
     }
-    if (admin()) { var rs = botaoRestaurar(["avisosFixos"], "guia de camisas"); if (rs) w.appendChild(rs); }
+    if (admin()) { var rs = botaoRestaurar(["avisosFixos"], "guia de camisas e contagem regressiva"); if (rs) w.appendChild(rs); }
     return w;
   }
 
   function abrirAviso(a) {
-    var novo = !a;
+    var novo = !a, fixo = !!(a && a.tipo === "contagem");
     var corpo = h("div", { "class": "form" });
     function campo(rot, id, valor, ph, area, linhas, max) {
       corpo.appendChild(h("label", { "class": "lbl", "for": id, text: rot }));
@@ -850,6 +850,7 @@ window.startApp = function (D) {
     var et = campo("Etiqueta (canto da imagem)", "a-et", novo ? "Aviso à equipe" : a.etiqueta, "Ex.: Aviso aos participantes");
     var ti = campo("Título", "a-ti", novo ? "" : a.titulo, "Ex.: Mudança de horário");
     var su = campo("Subtítulo (opcional)", "a-su", novo ? "AOM 2026 · 2 e 3 de dezembro · Campinas/SP" : a.sub, "");
+    var lg = fixo ? campo("Texto abaixo do relógio", "a-lg", a.legenda, "Ex.: para a abertura, quarta (02/12), às 8h30") : null;
     var tx = campo("Mensagem", "a-tx", novo ? "" : a.texto, "Uma ideia por linha. Comece a linha com - para virar tópico. Linha em branco separa os blocos. *Entre asteriscos* fica em negrito.", true);
     corpo.appendChild(h("div", { "class": "aviso-ajuda" }, [
       h("button", { type: "button", "class": "chip", text: "+ Contagem regressiva", onclick: function () {
@@ -866,17 +867,25 @@ window.startApp = function (D) {
     var sf = seletorFig(novo ? {} : a, function () { previa(); });
     corpo.appendChild(sf.el);
     corpo.appendChild(cv);
-    function atual() { var f = sf.valor(); return { id: novo ? "" : a.id, etiqueta: et.value.trim(), titulo: ti.value.trim(), sub: su.value.trim(), texto: tx.value, dr: dr.value.trim(), dt: dt.value.trim(), fig: f.fig, figPos: f.figPos }; }
+    function atual() {
+      var f = sf.valor(), v = { id: novo ? "" : a.id, etiqueta: et.value.trim(), titulo: ti.value.trim(), sub: su.value.trim(), texto: tx.value, dr: dr.value.trim(), dt: dt.value.trim(), fig: f.fig, figPos: f.figPos };
+      if (fixo) { v.tipo = "contagem"; v.legenda = lg.value.trim(); }
+      return v;
+    }
     var tmr;
     function previa() { clearTimeout(tmr); tmr = setTimeout(function () { var v = atual(); if (!v.titulo) v.titulo = "Título do aviso"; window.AomAviso.desenhar(cv, v).catch(function () {}); }, 250); }
-    [et, ti, su, tx, dr, dt].forEach(function (el) { el.addEventListener("input", previa); });
+    [et, ti, su, tx, dr, dt, lg].forEach(function (el) { if (el) el.addEventListener("input", previa); });
     previa();
     var botoes = [
       h("button", { type: "button", "class": "btn ghost", text: "Cancelar", onclick: fecharSheet }),
       h("button", { type: "button", "class": "btn", text: "Salvar aviso", onclick: function () {
         var v = atual();
         if (!v.titulo) { ti.focus(); toast("O aviso precisa de um título.", true); return; }
-        exigirNome(function () { fecharSheet(); salvarAviso(v); });
+        exigirNome(function () {
+          fecharSheet();
+          if (fixo) salvarCont("avisosFixos", C("avisosFixos").map(function (x) { return x.id === a.id ? v : x; }), "Aviso atualizado");
+          else salvarAviso(v);
+        });
       } })
     ];
     corpo.appendChild(h("div", { "class": "btns" }, botoes));
@@ -889,14 +898,18 @@ window.startApp = function (D) {
           zona.appendChild(h("p", { "class": "meta", text: "Apagar este aviso para todos? Isso não dá para desfazer." }));
           zona.appendChild(h("div", { "class": "btns" }, [
             h("button", { type: "button", "class": "btn ghost", text: "Não apagar", onclick: function () { desenharApagar(false); } }),
-            h("button", { type: "button", "class": "btn danger", text: "Sim, apagar", onclick: function () { fecharSheet(); apagarAviso(a); } })
+            h("button", { type: "button", "class": "btn danger", text: "Sim, apagar", onclick: function () {
+              fecharSheet();
+              if (fixo) exigirNome(function () { salvarCont("avisosFixos", C("avisosFixos").filter(function (x) { return x.id !== a.id; }), "Aviso apagado"); });
+              else apagarAviso(a);
+            } })
           ]));
         }
       };
       desenharApagar(false);
       corpo.appendChild(zona);
     }
-    abrirSheet(novo ? "Novo aviso" : "Editar aviso", "Prévia no padrão AOM, pronta para o WhatsApp.", corpo);
+    abrirSheet(novo ? "Novo aviso" : fixo ? "Editar contagem regressiva" : "Editar aviso", fixo ? "O relógio se atualiza sozinho com o tempo que falta para a abertura." : "Prévia no padrão AOM, pronta para o WhatsApp.", corpo);
   }
   function salvarAviso(v) {
     var quem = eu() ? eu().rotulo : "";
@@ -966,17 +979,29 @@ window.startApp = function (D) {
     } })]);
   }
 
+  var THOM = [["1", "Espiando", "assets/img/mascote.webp"], ["2", "Sorrindo", "assets/img/thom-2.webp"], ["3", "Animado", "assets/img/thom-3.webp"], ["4", "Sapeca", "assets/img/thom-4.webp"], ["5", "Curioso", "assets/img/thom-5.webp"], ["6", "Com a camisa", "assets/img/thom-6.webp"]];
   function seletorFig(ini, aoMudar) {
     var box = h("div", { "class": "figsel" });
     var chk = h("input", { type: "checkbox", id: "fig-on" });
     chk.checked = !!ini.fig;
-    var dica = h("p", { "class": "meta", text: "O Thom aparece no canto de baixo, à direita." });
-    function marcar() { dica.hidden = !chk.checked; }
+    var sel = THOM.some(function (t) { return t[0] === ini.fig; }) ? ini.fig : "1";
+    var grade = h("div", { "class": "thom-grid", role: "radiogroup", "aria-label": "Escolha o Thom" });
+    var bts = THOM.map(function (t) {
+      var b = h("button", { type: "button", "class": "thom-op", role: "radio", onclick: function () { sel = t[0]; marcar(); aoMudar(); } },
+        [h("img", { src: t[2], alt: "", loading: "lazy" }), h("span", { text: t[1] })]);
+      grade.appendChild(b); return b;
+    });
+    var dica = h("p", { "class": "meta", text: "Escolha o Thom. Ele aparece no canto de baixo, à direita." });
+    function marcar() {
+      grade.hidden = dica.hidden = !chk.checked;
+      bts.forEach(function (b, i) { b.setAttribute("aria-checked", String(THOM[i][0] === sel)); });
+    }
     chk.addEventListener("change", function () { marcar(); aoMudar(); });
     box.appendChild(h("label", { "class": "chk", "for": "fig-on" }, [chk, h("span", { text: "Inserir o Thom no anúncio" })]));
     box.appendChild(dica);
+    box.appendChild(grade);
     marcar();
-    return { el: box, valor: function () { return chk.checked ? { fig: "1", figPos: "dir" } : { fig: "", figPos: "" }; } };
+    return { el: box, valor: function () { return chk.checked ? { fig: sel, figPos: "dir" } : { fig: "", figPos: "" }; } };
   }
 
   function abrirEditor(o) {
